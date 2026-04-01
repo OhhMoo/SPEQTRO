@@ -172,7 +172,7 @@ def _check_pubchem(config) -> CheckResult:
 
 
 def _check_nmrshiftdb(config) -> CheckResult:
-    """Probe NMRShiftDB2 with a lightweight search query."""
+    """Probe NMRShiftDB with a lightweight connectivity check."""
     import urllib.request
     import urllib.error
 
@@ -184,21 +184,21 @@ def _check_nmrshiftdb(config) -> CheckResult:
             latency_ms = (time.monotonic() - t0) * 1000
             ok = resp.status == 200
             return CheckResult(
-                name="NMRShiftDB2", key="nmrshiftdb", ok=ok,
+                name="NMRShiftDB", key="nmrshiftdb", ok=ok,
                 latency_ms=latency_ms,
                 note="Reachable (no key needed)" if ok else f"HTTP {resp.status}",
             )
     except urllib.error.URLError as e:
         latency_ms = (time.monotonic() - t0) * 1000
         return CheckResult(
-            name="NMRShiftDB2", key="nmrshiftdb", ok=False,
+            name="NMRShiftDB", key="nmrshiftdb", ok=False,
             latency_ms=latency_ms, note="Unreachable",
             error=str(e.reason) if hasattr(e, "reason") else str(e),
         )
     except Exception as e:
         latency_ms = (time.monotonic() - t0) * 1000
         return CheckResult(
-            name="NMRShiftDB2", key="nmrshiftdb", ok=False,
+            name="NMRShiftDB", key="nmrshiftdb", ok=False,
             latency_ms=latency_ms, note="Error", error=str(e),
         )
 
