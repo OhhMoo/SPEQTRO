@@ -8,7 +8,7 @@
 
 | | |
 |:--- |:--- |
-| <img src="assets/logo_analysis.gif" alt="SPEQTRO thinking animation" width="350"/> | **SPEQTRO** wraps Claude AI into a CLI tool that helps chemists identify unknown structures from spectroscopic data, predict chemical shifts, search reference databases, and generate reproducible analysis reports — all from the terminal. |
+| <img src="assets/logo_analysis.gif" alt="SPEQTRO thinking animation" width="350"/> | **SPEQTRO** wraps Agentic AI into a CLI tool that helps chemists identify unknown structures from spectroscopic data, predict chemical shifts, search reference databases, and generate reproducible analysis reports — all from the terminal. |
 
 ## Features
 - **15 built-in tools** across NMR, MS, IR, structure analysis, and database search
