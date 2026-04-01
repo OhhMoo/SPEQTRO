@@ -1,0 +1,47 @@
+{
+  "CDCl3": [
+    {"shift": 7.26, "nucleus": "1H", "note": "CHCl\u2083 residual"},
+    {"shift": 77.16, "nucleus": "13C", "note": "CDCl\u2083 triplet center"}
+  ],
+  "DMSO-d6": [
+    {"shift": 2.50, "nucleus": "1H", "note": "DMSO-d\u2085 residual"},
+    {"shift": 39.52, "nucleus": "13C", "note": "DMSO-d\u2086 septet center"}
+  ],
+  "D2O": [
+    {"shift": 4.79, "nucleus": "1H", "note": "HOD residual"}
+  ],
+  "CD3OD": [
+    {"shift": 3.31, "nucleus": "1H", "note": "CHD\u2082OD residual"},
+    {"shift": 4.87, "nucleus": "1H", "note": "OH residual"},
+    {"shift": 49.00, "nucleus": "13C", "note": "CD\u2083OD septet center"}
+  ],
+  "Acetone-d6": [
+    {"shift": 2.05, "nucleus": "1H", "note": "acetone-d\u2085 residual"},
+    {"shift": 29.84, "nucleus": "13C", "note": "CD\u2083 carbon"},
+    {"shift": 206.26, "nucleus": "13C", "note": "C=O carbon"}
+  ],
+  "C6D6": [
+    {"shift": 7.16, "nucleus": "1H", "note": "C\u2086D\u2085H residual"},
+    {"shift": 128.06, "nucleus": "13C", "note": "C\u2086D\u2086 triplet center"}
+  ],
+  "CD2Cl2": [
+    {"shift": 5.32, "nucleus": "1H", "note": "CHDCl\u2082 residual"},
+    {"shift": 53.84, "nucleus": "13C", "note": "CD\u2082Cl\u2082 quintet center"}
+  ],
+  "THF-d8": [
+    {"shift": 1.72, "nucleus": "1H", "note": "THF-d\u2087 residual (\u03b2-CH\u2082)"},
+    {"shift": 3.58, "nucleus": "1H", "note": "THF-d\u2087 residual (\u03b1-CH\u2082)"},
+    {"shift": 25.31, "nucleus": "13C", "note": "THF-d\u2088 \u03b2-carbon"},
+    {"shift": 67.21, "nucleus": "13C", "note": "THF-d\u2088 \u03b1-carbon"}
+  ],
+  "MeCN-d3": [
+    {"shift": 1.94, "nucleus": "1H", "note": "CHD\u2082CN residual"},
+    {"shift": 1.32, "nucleus": "13C", "note": "CD\u2083CN methyl carbon"},
+    {"shift": 118.26, "nucleus": "13C", "note": "CD\u2083CN nitrile carbon"}
+  ],
+  "Pyridine-d5": [
+    {"shift": 7.22, "nucleus": "1H", "note": "C\u2084D\u2084NH H-3,5 residual"},
+    {"shift": 7.58, "nucleus": "1H", "note": "C\u2084D\u2084NH H-4 residual"},
+    {"shift": 8.74, "nucleus": "1H", "note": "C\u2084D\u2084NH H-2,6 residual"}
+  ]
+}

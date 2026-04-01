@@ -1,0 +1,133 @@
+{
+  "contaminants": [
+    {
+      "name": "silicone grease",
+      "shifts": [0.07],
+      "nucleus": "1H",
+      "multiplicity": "s",
+      "note": "From joints, septa. Persistent broad singlet."
+    },
+    {
+      "name": "water",
+      "nucleus": "1H",
+      "multiplicity": "br s",
+      "shifts_by_solvent": {
+        "CDCl3": 1.56,
+        "DMSO-d6": 3.33,
+        "CD3OD": 4.87,
+        "Acetone-d6": 2.84,
+        "D2O": 4.79,
+        "C6D6": 0.40,
+        "CD2Cl2": 1.51,
+        "THF-d8": 2.42,
+        "MeCN-d3": 2.13
+      },
+      "note": "Broad singlet, shift strongly solvent-dependent."
+    },
+    {
+      "name": "ethyl acetate",
+      "shifts": [4.12, 2.05, 1.26],
+      "nucleus": "1H",
+      "multiplicities": ["q", "s", "t"],
+      "note": "Common column chromatography solvent. Characteristic quartet at 4.12."
+    },
+    {
+      "name": "dichloromethane (DCM)",
+      "shifts": [5.30],
+      "nucleus": "1H",
+      "multiplicity": "s",
+      "note": "Very common. Hard to remove fully under vacuum."
+    },
+    {
+      "name": "dimethylformamide (DMF)",
+      "shifts": [8.02, 2.96, 2.88],
+      "nucleus": "1H",
+      "multiplicities": ["s", "s", "s"],
+      "note": "High-boiling. Very hard to remove. Two N-methyl singlets."
+    },
+    {
+      "name": "dimethyl sulfoxide (DMSO)",
+      "shifts": [2.62],
+      "nucleus": "1H",
+      "multiplicity": "s",
+      "note": "Very high boiling. Not to be confused with DMSO-d6 solvent residual."
+    },
+    {
+      "name": "BHT (butylated hydroxytoluene)",
+      "shifts": [6.98, 5.01, 2.27, 1.43],
+      "nucleus": "1H",
+      "multiplicities": ["s", "s", "s", "s"],
+      "note": "Stabilizer in THF/ether/DCM. Distinctive aromatic + OH + methyl pattern."
+    },
+    {
+      "name": "tetrahydrofuran (THF)",
+      "shifts": [3.76, 1.85],
+      "nucleus": "1H",
+      "multiplicities": ["m", "m"],
+      "note": "Common solvent, low boiling."
+    },
+    {
+      "name": "diethyl ether",
+      "shifts": [3.48, 1.21],
+      "nucleus": "1H",
+      "multiplicities": ["q", "t"],
+      "note": "Very low boiling. Usually removed easily."
+    },
+    {
+      "name": "acetone",
+      "shifts": [2.17],
+      "nucleus": "1H",
+      "multiplicity": "s",
+      "note": "Used in column chromatography. Singlet."
+    },
+    {
+      "name": "methanol",
+      "shifts": [3.49, 1.09],
+      "nucleus": "1H",
+      "multiplicities": ["s", "br s"],
+      "note": "Singlet CH3 + broad OH. Hard to fully remove from polar compounds."
+    },
+    {
+      "name": "hexanes",
+      "shifts": [0.89, 1.27],
+      "nucleus": "1H",
+      "multiplicities": ["t", "m"],
+      "note": "Common chromatography solvent."
+    },
+    {
+      "name": "toluene",
+      "shifts": [7.18, 2.34],
+      "nucleus": "1H",
+      "multiplicities": ["m", "s"],
+      "note": "High-boiling aromatic solvent."
+    },
+    {
+      "name": "acetic acid",
+      "shifts": [11.53, 2.10],
+      "nucleus": "1H",
+      "multiplicities": ["br s", "s"],
+      "note": "From workup with AcOH or AcOEt hydrolysis."
+    },
+    {
+      "name": "triethylamine (TEt3N)",
+      "shifts": [3.03, 1.26],
+      "nucleus": "1H",
+      "multiplicities": ["q", "t"],
+      "note": "Common base. Characteristic quartet/triplet pattern."
+    },
+    {
+      "name": "pyridine",
+      "shifts": [8.57, 7.62, 7.29],
+      "nucleus": "1H",
+      "multiplicities": ["m", "m", "m"],
+      "note": "Base/ligand. Three aromatic signals."
+    },
+    {
+      "name": "TMS (tetramethylsilane)",
+      "shifts": [0.00],
+      "nucleus": "1H",
+      "multiplicity": "s",
+      "note": "Reference compound or residual from NMR tube cap/septum."
+    }
+  ]
+}

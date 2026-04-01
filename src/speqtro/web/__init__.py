@@ -1,0 +1,1 @@
+"""speqtro web interface package."""

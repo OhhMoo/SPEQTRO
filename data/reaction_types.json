@@ -1,0 +1,147 @@
+{
+  "reaction_types": [
+    {
+      "id": "esterification",
+      "name": "Fischer Esterification / DCC Esterification",
+      "diagnostic_lost": ["carboxylic acid OH"],
+      "diagnostic_gained": ["ester carbonyl"],
+      "key_1h_markers": {
+        "lost": {"group": "carboxylic acid OH", "shift_range": [10.0, 13.0]},
+        "gained": {"group": "OCH2 of ester", "shift_range": [4.0, 4.3]}
+      },
+      "common_side_products": [
+        {"name": "unreacted starting acid", "note": "Peak at 10-12 ppm persists"},
+        {"name": "anhydride", "note": "Two carbonyl peaks in 13C ~166/170 ppm"},
+        {"name": "ester hydrolysis product", "note": "Acid OH reappears on workup"}
+      ]
+    },
+    {
+      "id": "amide_coupling",
+      "name": "Amide Bond Formation (HATU/DCC/EDC)",
+      "diagnostic_lost": ["carboxylic acid OH", "primary amine NH2"],
+      "diagnostic_gained": ["amide carbonyl"],
+      "key_1h_markers": {
+        "lost": {"group": "acid OH", "shift_range": [10.0, 13.0]},
+        "gained": {"group": "amide NH", "shift_range": [7.0, 9.0]}
+      },
+      "common_side_products": [
+        {"name": "HOBt/HOAt byproduct", "note": "Aromatic peaks ~7-8 ppm from coupling reagent"},
+        {"name": "urea (from DCC)", "note": "DCU precipitate, usually filtered"},
+        {"name": "epimerization", "note": "Diastereomer signals if chiral center alpha to carbonyl"}
+      ]
+    },
+    {
+      "id": "boc_protection",
+      "name": "Boc Protection of Amine",
+      "diagnostic_lost": ["primary amine NH2"],
+      "diagnostic_gained": ["Boc tert-butyl", "Boc NH"],
+      "key_1h_markers": {
+        "lost": {"group": "NH2", "shift_range": [1.0, 3.5]},
+        "gained": {"group": "Boc t-Bu 9H singlet", "shift_range": [1.40, 1.50]}
+      },
+      "common_side_products": [
+        {"name": "double Boc protection", "note": "Two tBu singlets if N-H attacked twice"},
+        {"name": "unreacted amine", "note": "NH2 signal persists"}
+      ]
+    },
+    {
+      "id": "boc_deprotection",
+      "name": "Boc Deprotection (TFA or HCl/dioxane)",
+      "diagnostic_lost": ["Boc tert-butyl", "Boc NH"],
+      "diagnostic_gained": ["primary amine NH2"],
+      "key_1h_markers": {
+        "lost": {"group": "Boc t-Bu 9H singlet", "shift_range": [1.40, 1.50]},
+        "gained": {"group": "NH2 or NH3+ (TFA salt)", "shift_range": [8.0, 9.5]}
+      },
+      "common_side_products": [
+        {"name": "incomplete deprotection", "note": "Residual t-Bu singlet at 1.45 ppm"},
+        {"name": "TFA salt", "note": "Broad NH3+ at 8-9 ppm (normal product as TFA salt)"}
+      ]
+    },
+    {
+      "id": "suzuki_coupling",
+      "name": "Suzuki-Miyaura Cross-Coupling",
+      "diagnostic_lost": ["aryl halide C-H pattern"],
+      "diagnostic_gained": ["new biaryl aromatic pattern"],
+      "key_1h_markers": {
+        "gained": {"group": "new aromatic protons", "shift_range": [7.0, 8.0]}
+      },
+      "common_side_products": [
+        {"name": "protodeboronation", "note": "Boronic acid converted to ArH, but no new biaryl bond"},
+        {"name": "homocoupling", "note": "Symmetrical biaryl from Pd-mediated ArB(OH)2 + ArB(OH)2"},
+        {"name": "unreacted halide", "note": "Starting aryl halide peaks persist"}
+      ]
+    },
+    {
+      "id": "reductive_amination",
+      "name": "Reductive Amination",
+      "diagnostic_lost": ["aldehyde"],
+      "diagnostic_gained": ["NCH or NCH2 adjacent to N"],
+      "key_1h_markers": {
+        "lost": {"group": "aldehyde CHO", "shift_range": [9.4, 10.5]},
+        "gained": {"group": "N-CH", "shift_range": [2.5, 3.5]}
+      },
+      "common_side_products": [
+        {"name": "over-reduction of imine to amine", "note": "Expected if NaBH4 in excess — usually desired"},
+        {"name": "double alkylation", "note": "N-dialkylated product if excess aldehyde"},
+        {"name": "alcohol (over-reduction)", "note": "Aldehyde reduced to alcohol without imine formation"}
+      ]
+    },
+    {
+      "id": "grignard_addition",
+      "name": "Grignard Addition to Carbonyl",
+      "diagnostic_lost": ["ketone carbonyl", "aldehyde"],
+      "diagnostic_gained": ["alcohol OH"],
+      "key_1h_markers": {
+        "lost": {"group": "C=O in 13C", "shift_range": [190.0, 220.0]},
+        "gained": {"group": "tertiary alcohol OH", "shift_range": [1.5, 3.5]}
+      },
+      "common_side_products": [
+        {"name": "1,2 vs 1,4 addition mixture", "note": "Both alcohol and enol ether signals for alpha,beta-unsaturated"},
+        {"name": "elimination product", "note": "Alkene signals appear on workup"}
+      ]
+    },
+    {
+      "id": "oxidation_alcohol_to_ketone",
+      "name": "Alcohol Oxidation (Swern, DMP, PCC)",
+      "diagnostic_lost": ["alcohol OH"],
+      "diagnostic_gained": ["ketone carbonyl"],
+      "key_1h_markers": {
+        "lost": {"group": "CHOH methine", "shift_range": [3.5, 4.5]},
+        "gained": {"group": "C=O 13C signal", "shift_range": [200.0, 220.0]}
+      },
+      "common_side_products": [
+        {"name": "over-oxidation to carboxylic acid", "note": "Acid OH peak 10-12 ppm, especially from primary alcohols with harsh oxidant"},
+        {"name": "incomplete reaction", "note": "Starting alcohol CHOH peak persists"}
+      ]
+    },
+    {
+      "id": "wittig",
+      "name": "Wittig Olefination",
+      "diagnostic_lost": ["ketone carbonyl", "aldehyde"],
+      "diagnostic_gained": ["terminal alkene =CH2", "internal alkene =CH"],
+      "key_1h_markers": {
+        "lost": {"group": "carbonyl 13C", "shift_range": [190.0, 220.0]},
+        "gained": {"group": "vinyl =CH protons", "shift_range": [4.8, 6.5]}
+      },
+      "common_side_products": [
+        {"name": "E/Z mixture", "note": "Two sets of vinyl proton signals"},
+        {"name": "betaine decomposition product", "note": "Phosphine oxide byproduct Ph3P=O at ~1.5 ppm in 31P NMR"}
+      ]
+    },
+    {
+      "id": "cbz_deprotection",
+      "name": "Cbz Deprotection (H2/Pd)",
+      "diagnostic_lost": ["OCH2 benzylic (Cbz)", "phenyl ring (Cbz)"],
+      "diagnostic_gained": ["primary amine NH2"],
+      "key_1h_markers": {
+        "lost": {"group": "Cbz CH2 benzylic", "shift_range": [5.0, 5.2]},
+        "gained": {"group": "free NH2 or NH3+", "shift_range": [1.5, 3.5]}
+      },
+      "common_side_products": [
+        {"name": "incomplete deprotection", "note": "Residual CH2Ph singlet at ~5.1 ppm"},
+        {"name": "over-reduction", "note": "Alkene or arene rings reduced if over-exposed to H2"}
+      ]
+    }
+  ]
+}

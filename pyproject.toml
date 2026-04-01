@@ -1,0 +1,115 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "speqtro"
+version = "0.1.4"
+description = "speqtro — Autonomous spectroscopy reasoning agent for chemists"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10,<3.14"
+authors = [
+    { name = "speqtro contributors" },
+]
+
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.0",
+    "prompt-toolkit>=3.0",
+    "anthropic>=0.74.0",
+    "httpx>=0.27",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+chemistry = [
+    "rdkit>=2023.03",
+]
+
+# DP5/DP4 scoring — pure scipy, no extra deps needed (vendored)
+
+# SSIN — IR functional group detection
+ssin = [
+    "torch>=2.1",
+    "jcamp>=1.2",
+]
+
+# CASCADE — 13C NMR shift prediction (TF CPU-only)
+cascade = [
+    "tensorflow-cpu>=2.11,<2.16",
+    "kgcnn>=2.2,<3",
+]
+
+# ChefNMR — NMR-to-structure elucidation
+chefnmr = [
+    "torch>=2.1",
+    "lightning>=2.0",
+    "omegaconf>=2.3",
+    "einops>=0.7",
+]
+
+# ms-pred/ICEBERG — MS/MS fragmentation prediction
+mspred = [
+    "torch>=2.1",
+    "lightning>=2.0",
+    "dgl>=2.0",
+    "torch-scatter>=2.1",
+    "pygmtools>=0.3",
+]
+
+# All ML tools (PyTorch-based: SSIN + ChefNMR + ms-pred)
+torch-tools = [
+    "speqtro[ssin,chefnmr,mspred]",
+]
+
+# Everything
+all = [
+    "speqtro[chemistry,cascade,torch-tools,web]",
+]
+
+web = [
+    "starlette>=0.37",
+    "uvicorn>=0.29",
+    "aiofiles>=23.0",
+    "sse-starlette>=2.0",
+]
+
+mcp = [
+    "mcp[cli]>=1.0",
+    "uvicorn>=0.29",
+    "starlette>=0.37",
+]
+
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+speqtro = "speqtro.cli:entry"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/speqtro"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/speqtro",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
