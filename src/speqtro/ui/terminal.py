@@ -36,14 +36,14 @@ _LOGO_LINES = [
 
 
 def _logo_row_color(row_i: int, height: int) -> str:
-    """Lime (top) → cyan (bottom) vertical gradient for retro terminal header."""
+    """Deep teal (top) → bright cyan (bottom) vertical gradient for terminal header."""
     if height <= 1:
-        return "#c8ff3a"
+        return "#0D6B8C"
     t = row_i / (height - 1)
-    # #c8ff3a (lime) → #00e5ff (cyan)
-    r = int(0xC8 + (0x00 - 0xC8) * t)
-    g = int(0xFF + (0xE5 - 0xFF) * t)
-    b = int(0x3A + (0xFF - 0x3A) * t)
+    # #0D6B8C (deep teal) → #00BCD4 (bright cyan)
+    r = int(0x0D + (0x00 - 0x0D) * t)
+    g = int(0x6B + (0xBC - 0x6B) * t)
+    b = int(0x8C + (0xD4 - 0x8C) * t)
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
@@ -66,9 +66,9 @@ def _logo_accent_line(logo_width: int) -> Text:
     # Bottom arc + rule — HUD-style, one line tall; width matches the logo row.
     dash = max(1, logo_width - 2)
     line = Text()
-    line.append("╰", style="dim #00a8c4")
-    line.append("─" * dash, style="dim #00c8e8")
-    line.append("╯", style="dim #00a8c4")
+    line.append("╰", style="dim #0D6B8C")
+    line.append("─" * dash, style="dim #00BCD4")
+    line.append("╯", style="dim #0D6B8C")
     return line
 
 
@@ -111,13 +111,13 @@ DEFAULT_SUGGESTIONS = [
 try:
     from prompt_toolkit.styles import Style as PtStyle
     PT_STYLE = PtStyle.from_dict({
-        "prompt":                          "#50fa7b bold",
-        "completion-menu.completion":      "bg:#1e1e2e #cccccc",
-        "completion-menu.completion.current": "bg:#00e5ff #1e1e2e bold",
-        "completion-menu.meta.completion": "bg:#1e1e2e #666666",
-        "scrollbar.background":            "bg:#1e1e2e",
-        "scrollbar.button":                "bg:#444466",
-        "bottom-toolbar":                  "bg:#1e1e2e #555577",
+        "prompt":                          "#00BCD4 bold",
+        "completion-menu.completion":      "bg:#0a1820 #cccccc",
+        "completion-menu.completion.current": "bg:#00BCD4 #081018 bold",
+        "completion-menu.meta.completion": "bg:#0a1820 #556670",
+        "scrollbar.background":            "bg:#0a1820",
+        "scrollbar.button":                "bg:#1a3a4a",
+        "bottom-toolbar":                  "bg:#081018 #4a7a8a",
     })
 except ImportError:
     PT_STYLE = None
@@ -191,13 +191,13 @@ class InteractiveTerminal:
         }
         model_label = short_names.get(model, model)
         verbose_badge = (
-            '<style fg="#1a1a2e" bg="#50fa7b"> verbose </style>'
+            '<style fg="#081018" bg="#00BCD4"> verbose </style>'
             if self._verbose else ""
         )
         return HTML(
-            f'  <style fg="#ffffff" bg="#005577"> {model_label} </style>'
+            f'  <style fg="#e8e8e8" bg="#0D6B8C"> {model_label} </style>'
             f'{verbose_badge}'
-            f'<style fg="#444466">  /help for commands  ·  Ctrl+C to interrupt  ·  Ctrl+C × 2 to exit</style>'
+            f'<style fg="#3a6070">  /help for commands  ·  Ctrl+C to interrupt  ·  Ctrl+C × 2 to exit</style>'
         )
 
     # ------------------------------------------------------------------
@@ -213,7 +213,7 @@ class InteractiveTerminal:
         # Truncate if too long for comfort
         if len(text) > 72:
             text = text[:69] + "…"
-        return HTML(f'<style fg="#3a3a5c">{text}</style>')
+        return HTML(f'<style fg="#2a4a5a">{text}</style>')
 
     def _advance_suggestion(self):
         self._suggestion_idx = (self._suggestion_idx + 1) % len(self._suggestions)
@@ -245,21 +245,21 @@ class InteractiveTerminal:
             style="bold white",
         )
         header.append("\n")
-        header.append(f"v{version}", style="dim #6b6b7b")
-        header.append("  ·  ", style="dim #4a4a5c")
-        header.append(f"{n_tools} tools loaded", style="dim #6b6b7b")
+        header.append(f"v{version}", style="dim #4a7a8a")
+        header.append("  ·  ", style="dim #2a4a5a")
+        header.append(f"{n_tools} tools loaded", style="dim #4a7a8a")
         header.append("\n\n")
-        header.append("Type a spectroscopy question, or ", style="dim #5c5c72")
-        header.append("/help", style="bold #00e5ff")
-        header.append(" for commands.", style="dim #5c5c72")
+        header.append("Type a spectroscopy question, or ", style="dim #3a6070")
+        header.append("/help", style="bold #00BCD4")
+        header.append(" for commands.", style="dim #4a6a7a")
 
         self.console.print()
         self.console.print(
             Panel(
                 header,
-                title=Text("speqtro", style="bold #00e5ff"),
+                title=Text("speqtro", style="bold #00BCD4"),
                 title_align="center",
-                border_style="dim #555555",
+                border_style="#0D6B8C",
                 box=box.ROUNDED,
                 padding=(1, 3),
             )
@@ -317,7 +317,7 @@ class InteractiveTerminal:
 
         while True:
             # Separator line above prompt
-            self.console.print(f"[dim #3a3a4e]{'─' * term_width}[/]")
+            self.console.print(f"[dim #1a3040]{'─' * term_width}[/]")
 
             try:
                 if self._prompt_session is not None:
@@ -444,8 +444,8 @@ class InteractiveTerminal:
         )
         self.console.print(Panel(
             LeftMarkdown(help_md),
-            title="[bold cyan]speqtro Help[/bold cyan]",
-            border_style="cyan",
+            title="[bold #00BCD4]speqtro Help[/bold #00BCD4]",
+            border_style="#0D6B8C",
         ))
 
     def _guided_verify_input(self):
@@ -455,14 +455,14 @@ class InteractiveTerminal:
         """
         from speqtro.input.spectral_input import SpectralInput
 
-        self.console.print("\n[bold cyan]speqtro Verify[/bold cyan] — enter spectral data\n")
+        self.console.print("\n[bold #00BCD4]speqtro Verify[/bold #00BCD4] — enter spectral data\n")
         self.console.print(
             "[dim]Each field accepts a file path or inline text. "
             "Press Enter to skip.[/dim]\n"
         )
 
         def _prompt(label: str, hint: str = "") -> str:
-            full_label = f"  [cyan]{label}[/cyan]"
+            full_label = f"  [#00BCD4]{label}[/#00BCD4]"
             if hint:
                 full_label += f" [dim]({hint})[/dim]"
             self.console.print(full_label)
@@ -505,8 +505,8 @@ class InteractiveTerminal:
         from rich.panel import Panel
         self.console.print(Panel(
             f"[dim]{inp.summary()}[/dim]",
-            title="[bold cyan]Spectral Input[/bold cyan]",
-            border_style="cyan",
+            title="[bold #00BCD4]Spectral Input[/bold #00BCD4]",
+            border_style="#0D6B8C",
             padding=(0, 2),
         ))
 

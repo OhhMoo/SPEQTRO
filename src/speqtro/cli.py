@@ -499,8 +499,8 @@ def setup():
 
     # ── Header ────────────────────────────────────────────────────────
     header = Text()
-    header.append("speqtro setup", style="bold cyan")
-    header.append("\n\nInteractive configuration for speqtro.\n", style="dim")
+    header.append("SPEQTRO setup", style="bold cyan")
+    header.append("\n\nInteractive configuration for SPEQTRO.\n", style="dim")
     header.append("Press Enter to keep current values.", style="dim")
     console.print(Panel(header, border_style="cyan", box=box.ROUNDED, padding=(1, 3)))
 
@@ -733,7 +733,7 @@ def doctor():
     from rich.text import Text
 
     header = Text()
-    header.append("speqtro doctor", style="bold cyan")
+    header.append("SPEQTRO doctor", style="bold cyan")
     header.append("  --  system diagnostic report\n", style="dim")
     console.print(Panel(header, border_style="cyan", box=box.ROUNDED, padding=(0, 3)))
     console.print()

@@ -16,12 +16,12 @@
     --bg:     #111111;
     --bg2:    #191919;
     --text:   #e8e8e8;
-    --muted:  #555;
-    --border: #252525;
-    --green:  #00e87a;
-    --teal:   #1DBCA0;
-    --dark:   #181818;
-    --darker: #0e0e0e;
+    --muted:  #556670;
+    --border: #1e2a30;
+    --green:  #00BCD4;
+    --teal:   #0D6B8C;
+    --dark:   #0d1a22;
+    --darker: #081018;
     --red:    #e85555;
   }
 
@@ -49,7 +49,7 @@
     gap: 18px;
     font-family: 'SF Mono', 'Fira Code', monospace;
   }
-  .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px rgba(0,232,122,0.6); flex-shrink: 0; }
+  .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px rgba(0,188,212,0.6); flex-shrink: 0; }
   .s-label { color: var(--muted); }
   .s-val { color: #888; }
   .s-sep { color: #3a3a3a; }
@@ -88,7 +88,7 @@
     white-space: nowrap;
   }
   .nav-link:hover { color: var(--text); }
-  .nav-link.active { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
+  .nav-link.active { color: var(--green); border-bottom-color: var(--green); font-weight: 500; }
 
   /* ── PAGE SECTIONS ── */
   .page-section {
@@ -138,7 +138,7 @@
     font-weight: 700;
     letter-spacing: 0.1em;
     color: var(--green);
-    text-shadow: 0 0 24px rgba(0,232,122,0.4), 0 0 70px rgba(0,232,122,0.12);
+    text-shadow: 0 0 24px rgba(0,188,212,0.4), 0 0 70px rgba(0,188,212,0.12);
     margin-bottom: 8px;
   }
 
@@ -177,7 +177,7 @@
   .terminal-answer strong { color: #fff; font-weight: 600; }
   .terminal-answer em { color: #b8b8b8; }
   .terminal-answer code {
-    background: rgba(0,232,122,0.08);
+    background: rgba(0,188,212,0.08);
     color: var(--green);
     padding: 1px 5px;
     border-radius: 3px;
@@ -195,7 +195,7 @@
   .terminal-answer pre code {
     background: none;
     padding: 0;
-    color: #c8ff3a;
+    color: #A0E4F0;
     font-size: 12.5px;
   }
   .terminal-answer ul,.terminal-answer ol { padding-left: 1.5em; margin: 0.5em 0; }
@@ -242,11 +242,11 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    background: rgba(29,188,160,0.12);
-    border: 1px solid rgba(29,188,160,0.25);
+    background: rgba(13,107,140,0.18);
+    border: 1px solid rgba(13,107,140,0.40);
     border-radius: 100px;
     font-size: 11.5px;
-    color: var(--teal);
+    color: var(--green);
     font-family: 'SF Mono', monospace;
   }
 
@@ -354,8 +354,8 @@
     align-items: center;
     gap: 4px;
     padding: 2px 9px;
-    background: rgba(29,188,160,0.1);
-    color: var(--teal);
+    background: rgba(13,107,140,0.15);
+    color: var(--green);
     border-radius: 100px;
     font-size: 11px;
     font-family: 'SF Mono', monospace;
@@ -425,7 +425,7 @@
     text-transform: uppercase;
     margin-bottom: 14px;
   }
-  .verdict-confirmed { background: rgba(0,232,122,0.1);  color: #00c060; }
+  .verdict-confirmed { background: rgba(0,188,212,0.1);  color: #00A8C4; }
   .verdict-likely    { background: rgba(232,192,64,0.1);  color: #b89030; }
   .verdict-uncertain { background: rgba(153,153,153,0.1); color: #888; }
 
@@ -434,7 +434,7 @@
 
   .conf-bar-wrap { background: var(--border); border-radius: 100px; height: 4px; margin-top: 14px; overflow: hidden; }
   .conf-bar { height: 100%; border-radius: 100px; transition: width 0.7s ease; }
-  .conf-bar.confirmed { background: #00c060; }
+  .conf-bar.confirmed { background: #00A8C4; }
   .conf-bar.likely    { background: #c8a030; }
   .conf-bar.uncertain { background: var(--muted); }
 
@@ -481,7 +481,7 @@
     transition: color 0.15s, border-color 0.15s;
   }
   .subtab:hover { color: var(--text); }
-  .subtab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
+  .subtab.active { color: var(--green); border-bottom-color: var(--green); font-weight: 500; }
 
   /* ── TABLE ── */
   .tbl-wrap {
@@ -533,7 +533,7 @@
   }
   .feature-row:last-child { border-bottom: none; }
   .fr-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .dot-ok  { background: var(--green); box-shadow: 0 0 6px rgba(0,232,122,0.5); }
+  .dot-ok  { background: var(--green); box-shadow: 0 0 6px rgba(0,188,212,0.5); }
   .dot-err { background: var(--red); }
   .dot-dim { background: var(--border); }
   .fr-label { font-size: 14px; font-weight: 500; }
@@ -567,7 +567,7 @@
     min-height: 88px;
   }
   .upload-zone:hover { border-color: #aaa; }
-  .upload-zone.has-file { border-color: var(--teal); border-style: solid; background: rgba(29,188,160,0.04); }
+  .upload-zone.has-file { border-color: var(--teal); border-style: solid; background: rgba(13,107,140,0.08); }
   .upload-zone-inner { display: flex; flex-direction: column; align-items: center; gap: 5px; pointer-events: none; }
   .upload-zone-text { font-size: 12.5px; color: var(--muted); }
   .upload-zone-hint { font-size: 10.5px; color: #bbb; font-family: 'SF Mono', monospace; }
@@ -766,7 +766,7 @@
     <!-- Attached file badges -->
     <div x-show="verify.files.length > 0" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
       <template x-for="(f, i) in verify.files" :key="i">
-        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(29,188,160,0.1);border:1px solid rgba(29,188,160,0.25);border-radius:100px;font-size:11.5px;color:var(--teal);font-family:'SF Mono',monospace">
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(13,107,140,0.18);border:1px solid rgba(13,107,140,0.40);border-radius:100px;font-size:11.5px;color:var(--green);font-family:'SF Mono',monospace">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span x-text="f.name" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
           <span @click="verify.files.splice(i,1)" style="cursor:pointer;color:#666;font-size:13px;line-height:1;transition:color 0.12s" @mouseover="$event.target.style.color='var(--red)'" @mouseout="$event.target.style.color='#666'">✕</span>
@@ -910,7 +910,7 @@
         <div class="fr-dot" :class="doctor.result?.api_key_set ? 'dot-ok' : 'dot-err'"></div>
         <div>
           <div class="fr-label">Anthropic API key</div>
-          <div class="fr-val" x-text="doctor.result?.api_key_set ? 'Configured' : 'Not set — run speqtro setup'"></div>
+          <div class="fr-val" x-text="doctor.result?.api_key_set ? 'Configured' : 'Not set — run SPEQTRO setup'"></div>
         </div>
       </div>
       <div class="feature-row">

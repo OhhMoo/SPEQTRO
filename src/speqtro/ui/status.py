@@ -179,9 +179,9 @@ _ATOM_POS = [
 
 
 def _gradient_color(elapsed_s: float) -> str:
-    """Return a hex color string that pulses green → cyan."""
-    r1, g1, b1 = 80, 250, 123   # #50fa7b neon green
-    r2, g2, b2 = 0, 229, 255    # #00e5ff cyan
+    """Return a hex color string that pulses deep teal → bright cyan."""
+    r1, g1, b1 = 13, 107, 140   # #0D6B8C deep teal
+    r2, g2, b2 = 0, 188, 212    # #00BCD4 bright cyan
     cycle = 2.25
     t = (math.sin((elapsed_s % cycle) * (2 * math.pi / cycle)) + 1) / 2
     r = int(r1 + (r2 - r1) * t)
@@ -200,9 +200,9 @@ def _render_ring(active_idx: int, atom_color: str) -> Text:
                 if (row_i, col_i) == active:
                     ring.append("●", style=f"bold {atom_color}")
                 else:
-                    ring.append("○", style="#2a2a5a")
+                    ring.append("○", style="#1a3040")
             elif ch in ("─", "╱", "╲"):
-                ring.append(ch, style="#1e1e3e")
+                ring.append(ch, style="#0a1820")
             else:
                 ring.append(ch)
         if row_i < len(_RING_ROWS) - 1:
@@ -242,7 +242,7 @@ class _ThinkingRenderable:
             time_str = f"{int(elapsed // 60)}m {int(elapsed % 60)}s"
 
         status = Text()
-        status.append(f"{word}…", style="cyan")
+        status.append(f"{word}…", style="#00BCD4")
         status.append("\n\n")
         status.append(f"({time_str})", style="dim")
 
@@ -277,7 +277,7 @@ class _ThinkingRenderableLine:
         line = Text()
         line.append(frame, style=f"bold {color}")
         line.append("  ")
-        line.append(f"{word}…", style="cyan")
+        line.append(f"{word}…", style="#00BCD4")
         line.append("  ")
         line.append(f"({time_str})", style="dim")
 
