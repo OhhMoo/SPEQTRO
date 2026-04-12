@@ -23,71 +23,17 @@ from rich.text import Text
 # so the rendered logo is ~10 chars per letter + spacing.
 # Main fill uses a vertical lime→cyan gradient; a single dim cyan rule sits under the word.
 
-_PIXEL_FONT: dict[str, list[str]] = {
-    "S": [
-        " ███ ",
-        "█   █",
-        "█    ",
-        " ███ ",
-        "    █",
-        "█   █",
-        " ███ ",
-    ],
-    "P": [
-        "████ ",
-        "█   █",
-        "█   █",
-        "████ ",
-        "█    ",
-        "█    ",
-        "█    ",
-    ],
-    "E": [
-        "█████",
-        "█    ",
-        "█    ",
-        "████ ",
-        "█    ",
-        "█    ",
-        "█████",
-    ],
-    "Q": [
-        " ███ ",
-        "█   █",
-        "█   █",
-        "█   █",
-        "█ ██ ",
-        "█  ██",
-        " ████",
-    ],
-    "T": [
-        "█████",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-    ],
-    "R": [
-        "████ ",
-        "█   █",
-        "█   █",
-        "████ ",
-        "█ █  ",
-        "█  █ ",
-        "█   █",
-    ],
-    "O": [
-        " ███ ",
-        "█   █",
-        "█   █",
-        "█   █",
-        "█   █",
-        "█   █",
-        " ███ ",
-    ],
-}
+# Block-font SPEQTRO logo — same style as the Pinpoint sister project.
+# Six rows, lime→cyan vertical gradient applied at render time.
+_LOGO_LINES = [
+    "   ██████╗ ██████╗  ███████╗ ██████╗ ████████╗██████╗   ██████╗ ",
+    "  ██╔════╝ ██╔══██╗ ██╔════╝██╔═══██╗╚══██╔══╝██╔══██╗ ██╔═══██╗",
+    "  ╚█████╗  ██████╔╝ █████╗  ██║   ██║   ██║   ██████╔╝ ██║   ██║",
+    "   ╚════██╗██╔═══╝  ██╔══╝  ██║   ██║   ██║   ██╔══██╗ ██║   ██║",
+    "  ██████╔╝ ██║      ███████╗╚██████╔╝   ██║   ██║  ██║ ╚██████╔╝",
+    "  ╚═════╝  ╚═╝      ╚══════╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝  ╚═════╝ ",
+]
+
 
 def _logo_row_color(row_i: int, height: int) -> str:
     """Lime (top) → cyan (bottom) vertical gradient for retro terminal header."""
@@ -102,22 +48,14 @@ def _logo_row_color(row_i: int, height: int) -> str:
 
 
 def _render_logo(word: str = "SPEQTRO") -> list[Text]:
-    """Return Rich Text rows: doubled pixel-art SPEQTRO with vertical gradient."""
-    glyphs = [(ch, _PIXEL_FONT[ch]) for ch in word if ch in _PIXEL_FONT]
-    if not glyphs:
-        return []
-    height = max(len(g) for _, g in glyphs)
+    """Return Rich Text rows for the block-font SPEQTRO logo with vertical gradient."""
+    height = len(_LOGO_LINES)
     rows: list[Text] = []
-    for row_i in range(height):
+    for row_i, line in enumerate(_LOGO_LINES):
         color = _logo_row_color(row_i, height)
-        line = Text()
-        for letter_i, (ch, glyph) in enumerate(glyphs):
-            bitmap_row = glyph[row_i] if row_i < len(glyph) else " " * len(glyph[0])
-            for cell in bitmap_row:
-                line.append("██" if cell == "█" else "  ", style=color if cell == "█" else "")
-            if letter_i < len(glyphs) - 1:
-                line.append("  ")  # letter gap
-        rows.append(line)
+        t = Text()
+        t.append(line, style=f"bold {color}")
+        rows.append(t)
     return rows
 
 

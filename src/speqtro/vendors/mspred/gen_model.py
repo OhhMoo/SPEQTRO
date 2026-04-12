@@ -1,15 +1,14 @@
-"""gen_model.py -- vendored from ms-pred, imports fixed for speqtro.
-
-DAG Gen model (ICEBERG fragment generation).
-"""
+"""gen_model.py -- vendored from ms-pred (PyG version), imports fixed for speqtro."""
 import numpy as np
 from typing import List
 import json
 import torch
 import pytorch_lightning as pl
 import torch.nn as nn
-import dgl
-import dgl.nn as dgl_nn
+from torch_geometric.nn import global_mean_pool, GlobalAttention
+from torch_geometric.data import Data, Batch
+from torch_geometric.utils import subgraph as pyg_subgraph
+
 
 from . import common
 from . import nn_utils
@@ -44,6 +43,34 @@ class FragGNN(pl.LightningModule):
         add_hs: bool = False,
         **kwargs,
     ):
+        """__init__ _summary_
+
+        Args:
+            hidden_size (int): _description_
+            layers (int, optional): _description_. Defaults to 2.
+            set_layers (int, optional): _description_. Defaults to 2.
+            learning_rate (float, optional): _description_. Defaults to 7e-4.
+            lr_decay_rate (float, optional): _description_. Defaults to 1.0.
+            weight_decay (float, optional): _description_. Defaults to 0.
+            dropout (float, optional): _description_. Defaults to 0.
+            mpnn_type (str, optional): _description_. Defaults to "GGNN".
+            pool_op (str, optional): _description_. Defaults to "avg".
+            node_feats (int, optional): _description_. Defaults to common.ELEMENT_DIM+common.MAX_H.
+            pe_embed_k (int, optional): _description_. Defaults to 0.
+            max_broken (int, optional): _description_. Defaults to magma.FRAGMENT_ENGINE_PARAMS["max_broken_bonds"].
+            root_encode (str, optional): _description_. Defaults to "gnn".
+            inject_early (bool, optional): _description_. Defaults to False.
+            warmup (int, optional): _description_. Defaults to 1000.
+            embed_adduct (bool, optional): _description_. Defaults to False.
+            embed_collision (bool, optional): _description_. Defaults to False.
+            embed_elem_group (bool, optional): _description_. Defaults to False.
+            encode_forms (bool, optional): _description_. Defaults to False.
+            add_hs (bool, optional): _description_. Defaults to False.
+
+        Raises:
+            ValueError: _description_
+            NotImplementedError: _description_
+        """
         super().__init__()
         self.save_hyperparameters()
         self.hidden_size = hidden_size
@@ -122,6 +149,15 @@ class FragGNN(pl.LightningModule):
             self.collision_embedder_denominators.requires_grad = False
             collision_shift = pe_dim
 
+            # Not used: Compute the merged collision embedding as the mean of all energies 0 - 100 eV
+            # collision_eng_steps = torch.arange(0, 100, 0.01)
+            # self.collision_embed_merged = nn.Parameter(torch.cat(
+            #     (torch.sin(collision_eng_steps.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
+            #      torch.cos(collision_eng_steps.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0))),
+            #     dim=1
+            # ).mean(dim=0))
+            # self.collision_embed_merged.requires_grad = False
+
             # All-zero for collision == nan
             self.collision_embed_merged = nn.Parameter(torch.zeros(pe_dim))
             self.collision_embed_merged.requires_grad = False
@@ -156,7 +192,7 @@ class FragGNN(pl.LightningModule):
                     num_step_message_passing=self.layers,
                     set_transform_layers=self.set_layers,
                     mpnn_type=self.mpnn_type,
-                    gnn_node_feats=orig_node_feats + adduct_shift,
+                    gnn_node_feats=orig_node_feats + adduct_shift, # TODO: why not ev or instrument?
                     gnn_edge_feats=edge_feats,
                     dropout=self.dropout,
                 )
@@ -173,6 +209,8 @@ class FragGNN(pl.LightningModule):
             raise ValueError()
 
         # MLP layer to take representations from the pooling layer
+        # And predict a single scalar value at each of them
+        # I.e., Go from size B x 2h -> B x 1
         self.output_map = nn_utils.MLPBlocks(
             input_size=self.hidden_size * 3 + self.max_broken + self.formula_in_dim,
             hidden_size=self.hidden_size,
@@ -183,9 +221,9 @@ class FragGNN(pl.LightningModule):
         )
 
         if self.pool_op == "avg":
-            self.pool = dgl_nn.AvgPooling()
+            self.pool = lambda x, batch: global_mean_pool(x, batch)
         elif self.pool_op == "attn":
-            self.pool = dgl_nn.GlobalAttentionPooling(nn.Linear(hidden_size, 1))
+            self.pool = GlobalAttention(nn.Linear(hidden_size, 1))
         else:
             raise NotImplementedError()
 
@@ -205,6 +243,26 @@ class FragGNN(pl.LightningModule):
         root_forms=None,
         frag_forms=None,
     ):
+        """forward _summary_
+
+        Args:
+            graphs (_type_): _description_
+            root_repr (_type_): _description_
+            ind_maps (_type_): _description_
+            broken (_type_): _description_
+            collision_engs (_type_): _description_
+            precursor_mzs (_type_): _description_
+            adducts (_type_): _description_
+            instruments (_type_): _description_
+            root_forms (_type_, optional): _description_. Defaults to None.
+            frag_forms (_type_, optional): _description_. Defaults to None.
+
+        Raises:
+            NotImplementedError: _description_
+
+        Returns:
+            _type_: _description_
+        """
         if self.embed_adduct:
             embed_adducts = self.adduct_embedder[adducts.long()]
         if self.embed_instrument:
@@ -213,49 +271,54 @@ class FragGNN(pl.LightningModule):
             root_embeddings = self.root_module(root_repr)
             raise NotImplementedError()
         elif self.root_encode == "gnn":
-            with root_repr.local_scope():
-                ndata = root_repr.ndata["h"]
-                concat_list = [ndata]
-                if self.embed_adduct:
-                    embed_adducts_expand = embed_adducts.repeat_interleave(
-                        root_repr.batch_num_nodes(), 0
-                    )
-                    concat_list.append(embed_adducts_expand)
+            ndata = root_repr.x
+            concat_list = [ndata]
+            if self.embed_adduct:
+                embed_adducts_expand = embed_adducts[root_repr.batch]
+                concat_list.append(embed_adducts_expand)
 
-                if self.embed_collision:
-                    embed_collision = torch.cat(
-                        (torch.sin(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
-                         torch.cos(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0))),
-                        dim=1
-                    )
-                    embed_collision = torch.where(
-                        torch.isnan(embed_collision), self.collision_embed_merged.unsqueeze(0), embed_collision
-                    )
-                    embed_collision_expand = embed_collision.repeat_interleave(
-                        root_repr.batch_num_nodes(), 0
-                    )
-                    concat_list.append(embed_collision_expand)
+            if self.embed_collision:
+                embed_collision = torch.cat(
+                    (torch.sin(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
+                     torch.cos(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0))),
+                    dim=1
+                )
+                embed_collision = torch.where(  # handle entries without collision energy (== nan)
+                    torch.isnan(embed_collision), self.collision_embed_merged.unsqueeze(0), embed_collision
+                )
+                embed_collision_expand = embed_collision[root_repr.batch]
+                concat_list.append(embed_collision_expand)
 
-                if self.embed_instrument:
-                    embed_instruments_expand = embed_instruments.repeat_interleave(
-                        root_repr.batch_num_nodes(), 0
-                    )
-                    concat_list.append(embed_instruments_expand)
+            if self.embed_instrument:
 
-                root_repr.ndata["h"] = torch.cat(concat_list, -1)
-                root_embeddings = self.root_module(root_repr)
-                root_embeddings = self.pool(root_repr, root_embeddings)
+                # TODO: should I account for nan:
+                # self.instrument_nansub = nn.Parameter(torch.zeros(len(set(common.instrument2onehot_pos.values()))))
+                # self.instrument_nansub.requires_grad = False
+
+                # embed_instruments = torch.where(torch.isnan(embed_instruments),
+                #                                 self.instrument_nansub.unsqueeze(0),
+                #                                 embed_instruments
+                # )
+                embed_instruments_expand = embed_instruments[root_repr.batch]
+                concat_list.append(embed_instruments_expand)
+
+            original_x = root_repr.x
+            root_repr.x = torch.cat(concat_list, -1)
+            root_embeddings = self.root_module(root_repr)
+            root_embeddings = self.pool(root_embeddings, root_repr.batch)
+            root_repr.x = original_x
         else:
             pass
 
         # Line up the features to be parallel between fragment avgs and root
+        # graphs
         ext_root = root_embeddings[ind_maps]
 
         # Extend the root further to cover each individual atom
         ext_root_atoms = torch.repeat_interleave(
-            ext_root, graphs.batch_num_nodes(), dim=0
+            ext_root, torch.bincount(graphs.batch), dim=0
         )
-        concat_list = [graphs.ndata["h"]]
+        concat_list = [graphs.x]
 
         if self.inject_early:
             concat_list.append(ext_root_atoms)
@@ -263,38 +326,39 @@ class FragGNN(pl.LightningModule):
         if self.embed_adduct:
             adducts_mapped = embed_adducts[ind_maps]
             adducts_exp = torch.repeat_interleave(
-                adducts_mapped, graphs.batch_num_nodes(), dim=0
+                adducts_mapped, torch.bincount(graphs.batch), dim=0
             )
             concat_list.append(adducts_exp)
 
         if self.embed_collision:
             collision_mapped = embed_collision[ind_maps]
             collision_exp = torch.repeat_interleave(
-                collision_mapped, graphs.batch_num_nodes(), dim=0
+                collision_mapped, torch.bincount(graphs.batch), dim=0
             )
             concat_list.append(collision_exp)
 
         if self.embed_instrument:
             instruments_mapped = embed_instruments[ind_maps]
             instruments_exp = torch.repeat_interleave(
-                instruments_mapped, graphs.batch_num_nodes(), dim=0
+                instruments_mapped, torch.bincount(graphs.batch), dim=0
             )
             concat_list.append(instruments_exp)
 
-        with graphs.local_scope():
-            graphs.ndata["h"] = torch.cat(concat_list, -1).float()
+        original_x = graphs.x
+        graphs.x = torch.cat(concat_list, -1).float()
 
-            frag_embeddings = self.gnn(graphs)
+        frag_embeddings = self.gnn(graphs)
 
-            # Average embed the full root molecules and fragments
-            avg_frags = self.pool(graphs, frag_embeddings)
+        # Average embed the full root molecules and fragments
+        avg_frags = self.pool(frag_embeddings, graphs.batch)
+        graphs.x = original_x
 
         # Extend the avg of each fragment
+        exp_num = torch.bincount(graphs.batch)
         ext_frag_atoms = torch.repeat_interleave(
-            avg_frags, graphs.batch_num_nodes(), dim=0
+            avg_frags, exp_num, dim=0
         )
-
-        exp_num = graphs.batch_num_nodes()
+        # Do the same with the avg fragments
 
         broken = torch.clamp(broken, max=self.broken_clamp)
         ext_frag_broken = torch.repeat_interleave(broken, exp_num, dim=0)
@@ -323,15 +387,23 @@ class FragGNN(pl.LightningModule):
 
         output = self.output_map(hidden)
         output = self.sigmoid(output)
-        padded_out = nn_utils.pad_packed_tensor(output, graphs.batch_num_nodes(), 0)
+        padded_out = nn_utils.pad_packed_tensor(output, torch.bincount(graphs.batch), 0)
         padded_out = torch.squeeze(padded_out, -1)
 
         return padded_out
 
     def loss_fn(self, outputs, targets, natoms):
-        """loss_fn."""
+        """loss_fn.
+
+        Args:
+            outputs: Outputs after sigmoid fucntion
+            targets: Target binary vals
+            natoms: Number of atoms in each atom to consider padding
+
+        """
         targets = targets.float()
         loss = self.bce_loss(outputs, targets)
+        #loss = loss * (0.5 + 0.5 * targets)
         is_valid = (
             torch.arange(loss.shape[1], device=loss.device)[None, :] < natoms[:, None]
         )
@@ -400,10 +472,25 @@ class FragGNN(pl.LightningModule):
         decode_final_step: bool = True,
         canonical_root_smi: bool = False,
     ) -> List[dict]:
-        """predict_mol.
+        """prdict_mol.
 
         Predict a new fragmentation tree from a starting root molecule
-        autoregressively.
+        autoregressively. First a new fragment is added to the
+        frag_hash_to_entry dict and also put on the stack. Then it is
+        fragmented and its "atoms_pulled" and "left_pred" are updated
+        accordingly. The resulting new fragments are added to the hash.
+
+        Args:
+            root_smi (smi)
+            threshold: Leaving probability
+            device: Device
+            max_nodes (int): Max number to include
+            decode_final_step (bool): if False, do not decode the final
+              auto-regressive step. Instead, process it later by multi-
+              processing workers
+
+        Return:
+            Dictionary containing results
         """
         if type(root_smi) is str:
             batched_input = False
@@ -419,7 +506,7 @@ class FragGNN(pl.LightningModule):
 
         # Step 1: Get a fragmentation engine for root mol
         engine = [fragmentation.FragmentEngine(rsmi, mol_str_canonicalized=canonical_root_smi) for rsmi in root_smi]
-        max_depth = engine[0].max_tree_depth
+        max_depth = engine[0].max_tree_depth  # all max_depth should be the same
         root_frag = [e.get_root_frag() for e in engine]
         root_form = [common.form_from_smi(rsmi) for rsmi in root_smi]
         root_form_vec = torch.FloatTensor(np.array([common.formula_to_dense(rf) for rf in root_form])).to(device)
@@ -431,15 +518,15 @@ class FragGNN(pl.LightningModule):
         precursor_mzs = torch.FloatTensor(precursor_mz).to(device)
 
         # Step 2: Featurize the root molecule
-        root_graph_dict = [self.tree_processor.featurize_frag(frag=rf, engine=e, add_random_walk=False)
+        root_graph_dict = [self.tree_processor.featurize_frag(frag=rf, engine=e, add_random_walk=False)  # add random walk feature later in batched
                            for rf, e in zip(root_frag, engine)]
-        root_graph_dict = [self.tree_processor.featurize_frag(frag=rf, engine=e, add_random_walk=False)
+        root_graph_dict = [self.tree_processor.featurize_frag(frag=rf, engine=e, add_random_walk=False)  # add random walk feature later in batched
                            for rf, e in zip(root_frag, engine)]
 
         root_repr = None
         if self.root_encode == "gnn":
-            root_repr = dgl.batch([rg["graph"] for rg in root_graph_dict]).to(device)
-            self.tree_processor.add_pe_embed(root_repr)
+            root_repr = Batch.from_data_list([rg["graph"] for rg in root_graph_dict]).to(device)
+            self.tree_processor.add_pe_embed(root_repr)  # add random walk feature
         elif self.root_encode == "fp":
             root_fp = torch.from_numpy(np.array([common.get_morgan_fp_smi(rsmi) for rsmi in root_smi]))
             root_repr = root_fp.float().to(device)
@@ -454,6 +541,7 @@ class FragGNN(pl.LightningModule):
             f2h[rf] = rh
         root_score = [e.score_fragment(rf)[1] for e, rf in zip(engine, root_frag)]
         id_ = [0 for _ in range(batch_size)]
+        # TODO: Compute as in fragment engine
         root_entry = [{
             "frag": int(rf),
             "frag_hash": rh,
@@ -475,7 +563,9 @@ class FragGNN(pl.LightningModule):
         # Step 3: Run the autoregressive gen loop
         with torch.no_grad():
 
+            # Note: we don't fragment at the final depth
             while depth < max_depth:
+                # Convert all new frags to graphs (stack is to run next)
                 new_info_dicts = []
                 new_graphs = []
                 new_stack = []
@@ -494,8 +584,8 @@ class FragGNN(pl.LightningModule):
                             new_stack.append(i)
                             batched_select.append(info['new_to_old'] + idx_offset)
                             batched_num_nodes.append(len(info['new_to_old']))
-                            idx_offset += rg['graph'].number_of_nodes()
-                            batched_old_edge_idx.append(batched_old_edge_idx[-1] + rg['graph'].number_of_edges())
+                            idx_offset += rg['graph'].num_nodes
+                            batched_old_edge_idx.append(batched_old_edge_idx[-1] + rg['graph'].num_edges)
                 if len(new_info_dicts) == 0:
                     break
                 stack = new_stack
@@ -503,12 +593,27 @@ class FragGNN(pl.LightningModule):
                 batched_num_nodes = torch.LongTensor(batched_num_nodes).to(device)
                 batched_old_edge_idx = torch.LongTensor(batched_old_edge_idx[1:]).to(device)
 
-                # Get batched new DGL graph by extracting subgraph
-                frag_batch = dgl.batch(new_graphs).to(device)
-                frag_batch = frag_batch.subgraph(batched_select)
-                batched_num_edges = torch.bincount(torch.bucketize(frag_batch.edata[dgl.EID], batched_old_edge_idx, right=True))
-                frag_batch.set_batch_num_nodes(batched_num_nodes)
-                frag_batch.set_batch_num_edges(batched_num_edges)
+                # Get batched new PyG graph by extracting subgraph
+                full_batch = Batch.from_data_list(new_graphs).to(device)
+                # Extract subgraph for selected nodes
+                sub_edge_index, sub_edge_attr = pyg_subgraph(
+                    batched_select, full_batch.edge_index,
+                    full_batch.edge_attr, relabel_nodes=True,
+                    num_nodes=full_batch.num_nodes
+                )
+                # Build new batch assignment for subgraph nodes
+                full_batch_vec = full_batch.batch[batched_select]
+                frag_batch = Data(
+                    x=full_batch.x[batched_select],
+                    edge_index=sub_edge_index,
+                    edge_attr=sub_edge_attr,
+                )
+                frag_batch.batch = full_batch_vec
+                if hasattr(full_batch, 'edge_type'):
+                    node_mask = torch.zeros(full_batch.num_nodes, dtype=torch.bool, device=device)
+                    node_mask[batched_select] = True
+                    edge_mask = node_mask[full_batch.edge_index[0]] & node_mask[full_batch.edge_index[1]]
+                    frag_batch.edge_type = full_batch.edge_type[edge_mask]
 
                 frag_forms = [i["form"] for i in new_info_dicts]
                 frag_form_vecs = [common.formula_to_dense(i) for i in frag_forms]
@@ -518,8 +623,13 @@ class FragGNN(pl.LightningModule):
                 for st, nfh, ri in zip(stack, new_frag_hashes, reverse_idx):
                     frag_to_hash[ri][st] = nfh
 
+                # if PyG graph has >40000 nodes, split the batch to cap GPU memory usage
+
+                # pred_leaving_list = []
+                # for _frag_batch, _new_frag_hashes, _rev_idx, _frag_form_vecs in \
+                #         split_batch(frag_batch, new_frag_hashes, reverse_idx, frag_form_vecs):
                 frag_batch = frag_batch.to(device)
-                self.tree_processor.add_pe_embed(frag_batch)
+                self.tree_processor.add_pe_embed(frag_batch)  # add random walk feature. GPU memory intensive!
                 inds = torch.tensor(reverse_idx).long().to(device)
 
                 broken_nums_ar = np.array(
@@ -531,7 +641,7 @@ class FragGNN(pl.LightningModule):
                     graphs=frag_batch,
                     root_repr=root_repr,
                     ind_maps=inds,
-                    broken=broken_nums_tensor,
+                    broken=broken_nums_tensor,  # torch.ones_like(inds) * depth,
                     collision_engs=collision_engs,
                     precursor_mzs=precursor_mzs,
                     adducts=adducts if self.embed_adduct else None,
@@ -539,14 +649,19 @@ class FragGNN(pl.LightningModule):
                     root_forms=root_form_vec,
                     frag_forms=frag_form_vecs,
                 )
-                pred_leaving = pred_leaving.cpu()
+                pred_leaving = pred_leaving.cpu()  # switch to cpu device
                 depth += 1
 
+                # Rank order all the atom preds and predictions
+                # Continuously add items to the stack as long as they maintain
+                # the max node constraint ranked by prob
+
+                # Get all frag probabilities and sort them
                 cur_probs = [sorted(
                     [i["prob_gen"] for i in fh2e.values()]
                 )[::-1] for fh2e in frag_hash_to_entry]
                 if max_nodes is None:
-                    min_prob = torch.full(batch_size, threshold)
+                    min_prob = torch.full(batch_size, threshold)  # force on cpu
                 else:
                     cur_prob_len = torch.LongTensor([len(cp) for cp in cur_probs])
                     thresh_prob = torch.FloatTensor([cp[:max_nodes][-1] for cp in cur_probs])
@@ -581,6 +696,7 @@ class FragGNN(pl.LightningModule):
                 sorted_order = [sorted(so, key=lambda x: -x["prob_gen"]) for so in sorted_order]
                 new_stack = [[] for _ in range(batch_size)]
 
+                # Process ordered list continuously
                 batch_to_process = [{
                     "frag_hash_to_entry": frag_hash_to_entry[rev_idx],
                     "frag_to_hash": frag_to_hash[rev_idx],
@@ -594,11 +710,12 @@ class FragGNN(pl.LightningModule):
                     "threshold": threshold,
                 } for rev_idx in range(batch_size)]
 
-                if depth == max_depth and not decode_final_step:
+                if depth == max_depth and not decode_final_step: # return an unprocessed list
                     return batch_to_process
                 else:
                     new_vals = [decoder_wrapper(b) for b in batch_to_process]
 
+                    # Update the global variables
                     for rev_idx in range(batch_size):
                         frag_hash_to_entry[rev_idx] = new_vals[rev_idx]["frag_hash_to_entry"]
                         frag_to_hash[rev_idx] = new_vals[rev_idx]["frag_to_hash"]
@@ -609,7 +726,7 @@ class FragGNN(pl.LightningModule):
 
                     stack = new_stack
 
-        # Only get min score for each formula
+        # Only get min score for ech formula
         frag_hash_to_entry = [{
             k: v
             for k, v in fh2e.items()
@@ -638,6 +755,7 @@ class FragGNN(pl.LightningModule):
         param_dic = data["param_dic"]
         max_nodes = param_dic["max_nodes"]
 
+        # The real processing steps
         new_val = decoder_wrapper(param_dic)
         frag_hash_to_entry = new_val["frag_hash_to_entry"]
         form_to_min_score = new_val["form_to_min_score"]
@@ -657,6 +775,7 @@ class FragGNN(pl.LightningModule):
                 k: frag_hash_to_entry[k] for k in sorted_keys[:max_nodes]
             }
 
+        # Formulate the result
         output = {
             "root_canonical_smiles": data["root_canonical_smiles"],
             "name": data["name"],
@@ -681,18 +800,23 @@ def auto_regressive_decode(sorted_order, frag_hash_to_entry, frag_to_hash, form_
         atom_pred = new_item["atom_pred"]
         item_ind = new_item["item_ind"]
 
+        # Filter out on minimum prob
         if prob_gen <= min_prob:
             continue
 
+        # Calc stack ind
         orig_entry = new_item["orig_entry"]
         frag_int = orig_entry[0]
         frag_hash = orig_entry[1]
         dgl_new_to_old = orig_entry[3]
 
+        # Get atom ind
         atom = dgl_new_to_old[atom_ind]
 
+        # Calc remove dict
         out_dicts = engine.remove_atom(frag_int, int(atom))
 
+        # Update atoms_pulled for parent
         frag_hash_to_entry[frag_hash]["atoms_pulled"].append(int(atom))
         frag_hash_to_entry[frag_hash]["left_pred"].append(float(atom_pred))
         parent_broken = frag_hash_to_entry[frag_hash]["max_broken"]
@@ -706,6 +830,7 @@ def auto_regressive_decode(sorted_order, frag_hash_to_entry, frag_to_hash, form_
 
             max_broken = parent_broken + rm_bond_t
 
+            # Define probability of generating
             if current_entry is None:
                 score = engine.score_fragment(int(out_frag))[1]
 
@@ -727,6 +852,7 @@ def auto_regressive_decode(sorted_order, frag_hash_to_entry, frag_to_hash, form_
                     engine.atom_pass_stats(out_frag, depth=max_broken)
                 )
 
+                # reset to best score
                 temp_form = new_entry["form"]
                 prev_best_score = form_to_min_score.get(
                     temp_form, float("inf")
@@ -742,6 +868,9 @@ def auto_regressive_decode(sorted_order, frag_hash_to_entry, frag_to_hash, form_
                     current_entry["prob_gen"], prob_gen
                 )
 
+            # Update cur probs for the current batch index
+            # This is inefficient and can be made smarter without
+            # doing another minimum calculation
             cur_probs = sorted(
                 [i["prob_gen"] for i in frag_hash_to_entry.values()]
             )[::-1]

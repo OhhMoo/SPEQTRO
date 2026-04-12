@@ -53,11 +53,11 @@ chefnmr = [
     "einops>=0.7",
 ]
 
-# ms-pred/ICEBERG — MS/MS fragmentation prediction
+# ms-pred/ICEBERG — MS/MS fragmentation prediction (PyG version)
 mspred = [
     "torch>=2.1",
     "lightning>=2.0",
-    "dgl>=2.0",
+    "torch-geometric>=2.0",
     "torch-scatter>=2.1",
     "pygmtools>=0.3",
 ]

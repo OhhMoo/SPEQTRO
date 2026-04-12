@@ -1,10 +1,4 @@
-"""nn_utils.py -- vendored from ms-pred, imports fixed for speqtro.
-
-DGL 2.x compatibility:
-  - `dgl.backend.pytorch.pad_packed_tensor` and `pack_padded_tensor` are
-    replaced with pure-torch implementations defined in this module.
-  - `torch_scatter` is used as in the original.
-"""
+"""nn_utils.py -- vendored from ms-pred (PyG version), imports fixed for speqtro."""
 import copy
 import math
 import numpy as np
@@ -13,20 +7,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_scatter
-import dgl
-from packaging.version import Version
+from torch_geometric.data import Data, Batch
 
-if Version(torch.__version__) > Version('2.0.0'):
-    _TORCH_SP_SUPPORT = True  # use torch built-in sparse
-else:
-    try:
-        import torch_sparse
-        _TORCH_SP_SUPPORT = False  # use torch_sparse package
-    except Exception:
-        raise ModuleNotFoundError("Please either install torch_sparse or upgrade to a PyTorch version that supports "
-                                  "sparse-sparse matrix multiply")
+# speqtro requires torch>=2.1 which has built-in sparse support
+_TORCH_SP_SUPPORT = True
 
-from . import dgl_modules as dgl_mods
+from . import pyg_modules as pyg_mods
 
 
 def get_clones(module, N):
@@ -109,26 +95,44 @@ class MoleculeGNN(nn.Module):
             n_layers=set_transform_layers,
         )
 
-    def forward(self, g):
-        with g.local_scope():
-            ndata = g.ndata[self.node_feat_symbol]
-            edata = g.edata["e"]
-            h_init = self.input_project(ndata)
-            g.ndata.update({"_h": h_init})
-            g.edata.update({"_e": edata})
+    def forward(self, data):
+        """Encode batch of molecule graphs.
 
-            if self.mpnn_type in ("GGNN", "PNA", "GINE"):
-                output = self.gnn(g, "_h", "_e")
-            else:
-                raise NotImplementedError()
+        Args:
+            data: PyG Data/Batch object with .x, .edge_index, .edge_attr, .batch
+        """
+        ndata = data.x
+        edata = data.edge_attr
+        edge_index = data.edge_index
+        batch = data.batch if hasattr(data, 'batch') and data.batch is not None else torch.zeros(ndata.shape[0], dtype=torch.long, device=ndata.device)
 
-        output = self.set_transformer(g, output)
+        h_init = self.input_project(ndata)
+
+        if self.mpnn_type == "GGNN":
+            edge_type = data.edge_type if hasattr(data, 'edge_type') and data.edge_type is not None else edata.argmax(1)
+            output = self.gnn(h_init, edge_index, edata, edge_type=edge_type)
+        elif self.mpnn_type == "PNA":
+            output = self.gnn(h_init, edge_index, edata, batch=batch)
+        elif self.mpnn_type == "GINE":
+            output = self.gnn(h_init, edge_index, edata)
+        else:
+            raise NotImplementedError()
+
+        output = self.set_transformer(batch, output)
         return output
 
 
 class GINE(nn.Module):
-    def __init__(self, hidden_size=64, edge_feats=4, num_step_message_passing=4, dropout=0, **kwargs):
+    def __init__(
+        self,
+        hidden_size=64,
+        edge_feats=4,
+        num_step_message_passing=4,
+        dropout=0,
+        **kwargs
+    ):
         super().__init__()
+
         self.edge_transform = nn.Linear(edge_feats, hidden_size)
 
         self.layers = []
@@ -138,46 +142,54 @@ class GINE(nn.Module):
                 nn.ReLU(),
                 nn.Linear(hidden_size, hidden_size),
             )
-            temp_layer = dgl_mods.GINEConv(apply_func=apply_fn, init_eps=0)
+            temp_layer = pyg_mods.GINEConv(apply_func=apply_fn, init_eps=0)
             self.layers.append(temp_layer)
 
         self.layers = nn.ModuleList(self.layers)
         self.bnorms = get_clones(nn.BatchNorm1d(hidden_size), num_step_message_passing)
         self.dropouts = get_clones(nn.Dropout(dropout), num_step_message_passing)
 
-    def forward(self, graph, nfeat_name="_h", efeat_name="_e"):
-        node_feat, edge_feat = graph.ndata[nfeat_name], graph.edata[efeat_name]
+    def forward(self, node_feat, edge_index, edge_feat):
         edge_feat = self.edge_transform(edge_feat)
 
         for dropout, layer, norm in zip(self.dropouts, self.layers, self.bnorms):
-            layer_out = layer(graph, node_feat, edge_feat)
+            layer_out = layer(node_feat, edge_index, edge_feat)
             node_feat = F.relu(dropout(norm(layer_out))) + node_feat
 
         return node_feat
 
 
 class GGNN(nn.Module):
-    def __init__(self, hidden_size=64, edge_feats=4, num_step_message_passing=4, **kwargs):
+    def __init__(
+        self, hidden_size=64, edge_feats=4, num_step_message_passing=4, **kwargs
+    ):
         super().__init__()
-        self.model = dgl_mods.GatedGraphConv(
+        self.model = pyg_mods.GatedGraphConv(
             in_feats=hidden_size,
             out_feats=hidden_size,
             n_steps=num_step_message_passing,
             n_etypes=edge_feats,
         )
 
-    def forward(self, graph, nfeat_name="_h", efeat_name="_e"):
-        if "e_ind" in graph.edata:
-            etypes = graph.edata["e_ind"]
+    def forward(self, node_feat, edge_index, edge_feat, edge_type=None):
+        if edge_type is None:
+            etypes = edge_feat.argmax(1)
         else:
-            etypes = graph.edata[efeat_name].argmax(1)
-        return self.model(graph, graph.ndata[nfeat_name], etypes=etypes)
+            etypes = edge_type
+        return self.model(node_feat, edge_index, etypes=etypes)
 
 
 class PNA(nn.Module):
-    def __init__(self, hidden_size=64, edge_feats=4, num_step_message_passing=4, dropout=0, **kwargs):
+    def __init__(
+        self,
+        hidden_size=64,
+        edge_feats=4,
+        num_step_message_passing=4,
+        dropout=0,
+        **kwargs
+    ):
         super().__init__()
-        self.layer = dgl_mods.PNAConv(
+        self.layer = pyg_mods.PNAConv(
             in_size=hidden_size,
             out_size=hidden_size,
             aggregators=["mean", "max", "min", "std", "var", "sum"],
@@ -185,13 +197,14 @@ class PNA(nn.Module):
             delta=2.5,
             dropout=dropout,
         )
+
         self.layers = get_clones(self.layer, num_step_message_passing)
         self.bnorms = get_clones(nn.BatchNorm1d(hidden_size), num_step_message_passing)
 
-    def forward(self, graph, nfeat_name="_h", efeat_name="_e"):
-        node_feat, edge_feat = graph.ndata[nfeat_name], graph.edata[efeat_name]
+    def forward(self, node_feat, edge_index, edge_feat, batch=None):
         for layer, norm in zip(self.layers, self.bnorms):
-            node_feat = F.relu(norm(layer(graph, node_feat, edge_feat))) + node_feat
+            node_feat = F.relu(norm(layer(node_feat, edge_index, edge_feat, batch))) + node_feat
+
         return node_feat
 
 
@@ -262,52 +275,8 @@ class MLPBlocks(nn.Module):
         return output
 
 
-# -- Set Transformer (DGL) ----------------------------------------------------
-# Pure-torch replacements for dgl.backend.pytorch helpers.
-# These replace dgl_F.pad_packed_tensor and dgl_F.pack_padded_tensor which
-# may not exist in DGL 2.x.
-
-def pad_packed_tensor(input, lengths, value):
-    """pad_packed_tensor -- pure-torch replacement for dgl_F.pad_packed_tensor."""
-    old_shape = input.shape
-    device = input.device
-    if not isinstance(lengths, torch.Tensor):
-        lengths = torch.tensor(lengths, dtype=torch.long, device=device)
-    else:
-        lengths = lengths.to(device)
-    max_len = (lengths.max()).item()
-
-    batch_size = len(lengths)
-    x = input.new(batch_size * max_len, *old_shape[1:])
-    x.fill_(value)
-
-    index = torch.ones(len(input), dtype=torch.int64, device=device)
-    row_shifts = torch.cumsum(max_len - lengths, 0)
-    row_shifts_expanded = row_shifts[:-1].repeat_interleave(lengths[1:])
-    cumsum_inds = torch.cumsum(index, 0) - 1
-    cumsum_inds[lengths[0]:] += row_shifts_expanded
-    x[cumsum_inds] = input
-    return x.view(batch_size, max_len, *old_shape[1:])
-
-
-def pack_padded_tensor(input, lengths):
-    """pack_padded_tensor -- pure-torch replacement for dgl_F.pack_padded_tensor."""
-    device = input.device
-    if not isinstance(lengths, torch.Tensor):
-        lengths = torch.tensor(lengths, dtype=torch.long, device=device)
-    else:
-        lengths = lengths.to(device)
-
-    batch_size = len(lengths)
-    packed_tensors = []
-    for i in range(batch_size):
-        packed_tensors.append(input[i, :lengths[i].item(), :])
-    packed_tensors = torch.cat(packed_tensors)
-    return packed_tensors
-
-
 class MultiHeadAttention(nn.Module):
-    r"""Multi-Head Attention block for Set Transformer."""
+    r"""Multi-Head Attention block."""
 
     def __init__(self, d_model, num_heads, d_head, d_ff, dropouth=0.0, dropouta=0.0):
         super(MultiHeadAttention, self).__init__()
@@ -349,7 +318,6 @@ class MultiHeadAttention(nn.Module):
         keys = self.proj_k(mem).view(-1, self.num_heads, self.d_head)
         values = self.proj_v(mem).view(-1, self.num_heads, self.d_head)
 
-        # DGL 2.x compat: use local pad/pack helpers instead of dgl_F
         queries = pad_packed_tensor(queries, lengths_x, 0)
         keys = pad_packed_tensor(keys, lengths_mem, 0)
         values = pad_packed_tensor(values, lengths_mem, 0)
@@ -367,7 +335,6 @@ class MultiHeadAttention(nn.Module):
         out = self.proj_o(
             out.contiguous().view(batch_size, max_len_x, self.num_heads * self.d_head)
         )
-        # DGL 2.x compat: use local pack helper
         out = pack_padded_tensor(out, lengths_x)
         return out
 
@@ -378,7 +345,7 @@ class MultiHeadAttention(nn.Module):
 
 
 class SetAttentionBlock(nn.Module):
-    r"""SAB block from Set-Transformer."""
+    r"""SAB block introduced in Set-Transformer paper."""
 
     def __init__(self, d_model, num_heads, d_head, d_ff, dropouth=0.0, dropouta=0.0):
         super(SetAttentionBlock, self).__init__()
@@ -391,11 +358,19 @@ class SetAttentionBlock(nn.Module):
 
 
 class SetTransformerEncoder(nn.Module):
-    r"""Set Transformer Encoder."""
+    r"""The Encoder module in Set Transformer."""
 
     def __init__(
-        self, d_model, n_heads, d_head, d_ff, n_layers=1,
-        block_type="sab", m=None, dropouth=0.0, dropouta=0.0,
+        self,
+        d_model,
+        n_heads,
+        d_head,
+        d_ff,
+        n_layers=1,
+        block_type="sab",
+        m=None,
+        dropouth=0.0,
+        dropouta=0.0,
     ):
         super(SetTransformerEncoder, self).__init__()
         self.n_layers = n_layers
@@ -403,14 +378,20 @@ class SetTransformerEncoder(nn.Module):
         self.m = m
         layers = []
         if block_type == "isab" and m is None:
-            raise KeyError("The number of inducing points is not specified in ISAB block.")
+            raise KeyError(
+                "The number of inducing points is not specified in ISAB block."
+            )
 
         for _ in range(n_layers):
             if block_type == "sab":
                 layers.append(
                     SetAttentionBlock(
-                        d_model, n_heads, d_head, d_ff,
-                        dropouth=dropouth, dropouta=dropouta,
+                        d_model,
+                        n_heads,
+                        d_head,
+                        d_ff,
+                        dropouth=dropouth,
+                        dropouta=dropouta,
                     )
                 )
             elif block_type == "isab":
@@ -420,15 +401,14 @@ class SetTransformerEncoder(nn.Module):
 
         self.layers = nn.ModuleList(layers)
 
-    def forward(self, graph, feat):
-        lengths = graph.batch_num_nodes()
+    def forward(self, batch_tensor, feat):
+        lengths = torch.bincount(batch_tensor)
         for layer in self.layers:
             feat = layer(feat, lengths)
         return feat
 
 
 def _gen_mask(lengths_x, lengths_y, max_len_x, max_len_y):
-    """Generate binary mask array for given x and y input pairs."""
     device = lengths_x.device
     x_mask = torch.arange(max_len_x, device=device).unsqueeze(0) < lengths_x.unsqueeze(1)
     y_mask = torch.arange(max_len_y, device=device).unsqueeze(0) < lengths_y.unsqueeze(1)
@@ -436,18 +416,61 @@ def _gen_mask(lengths_x, lengths_y, max_len_x, max_len_y):
     return mask
 
 
-def random_walk_pe(g, k, eweight_name=None):
-    """Random Walk Positional Encoding."""
-    device = g.device
-    N = g.num_nodes()
-    M = g.num_edges()
-
-    row, col = g.edges()
-
-    if eweight_name is None:
-        value = torch.ones(M, device=device)
+def pad_packed_tensor(input, lengths, value):
+    """pad_packed_tensor"""
+    old_shape = input.shape
+    device = input.device
+    if not isinstance(lengths, torch.Tensor):
+        lengths = torch.tensor(lengths, dtype=torch.long, device=device)
     else:
-        value = g.edata[eweight_name].squeeze().to(device)
+        lengths = lengths.to(device)
+    max_len = (lengths.max()).item()
+
+    batch_size = len(lengths)
+    x = input.new(batch_size * max_len, *old_shape[1:])
+    x.fill_(value)
+
+    index = torch.ones(len(input), dtype=torch.int64, device=device)
+
+    row_shifts = torch.cumsum(max_len - lengths, 0)
+
+    row_shifts_expanded = row_shifts[:-1].repeat_interleave(lengths[1:])
+
+    cumsum_inds = torch.cumsum(index, 0) - 1
+    cumsum_inds[lengths[0]:] += row_shifts_expanded
+    x[cumsum_inds] = input
+    return x.view(batch_size, max_len, *old_shape[1:])
+
+
+def pack_padded_tensor(input, lengths):
+    """pack_padded_tensor"""
+    device = input.device
+    if not isinstance(lengths, torch.Tensor):
+        lengths = torch.tensor(lengths, dtype=torch.long, device=device)
+    else:
+        lengths = lengths.to(device)
+
+    batch_size = len(lengths)
+    packed_tensors = []
+    for i in range(batch_size):
+        packed_tensors.append(input[i, :lengths[i].item(), :])
+    packed_tensors = torch.cat(packed_tensors)
+    return packed_tensors
+
+
+def random_walk_pe(edge_index, num_nodes, k, edge_weight=None):
+    """Random Walk Positional Encoding."""
+    device = edge_index.device
+    N = num_nodes
+    E = edge_index.shape[1]
+
+    row, col = edge_index[0], edge_index[1]
+
+    if edge_weight is None:
+        value = torch.ones(E, device=device)
+    else:
+        value = edge_weight.float().squeeze().to(device)
+
     value_norm = torch_scatter.scatter(value, row, dim_size=N, reduce='sum')[row] + 1e-30
     value = value / value_norm
 
@@ -465,11 +488,11 @@ def random_walk_pe(g, k, eweight_name=None):
             return out.get_diag()
         elif _TORCH_SP_SUPPORT and out.is_sparse:
             out = out.coalesce()
-            row_, col_ = out.indices()
-            value_ = out.values()
-            select = row_ == col_
+            row, col = out.indices()
+            value = out.values()
+            select = row == col
             ret_val = torch.zeros(N, dtype=out.dtype, device=out.device)
-            ret_val[row_[select]] = value_[select]
+            ret_val[row[select]] = value[select]
             return ret_val
         return out[loop_index, loop_index]
 
@@ -480,16 +503,18 @@ def random_walk_pe(g, k, eweight_name=None):
         pe_list.append(get_pe(out))
 
     pe = torch.stack(pe_list, dim=-1)
+
     return pe
 
 
-def split_dgl_batch(batch: dgl.DGLGraph, max_dgl_edges, frag_hashes, rev_idx, frag_form_vecs):
-    if batch.num_edges() > max_dgl_edges and batch.batch_size > 1:
-        split = batch.batch_size // 2
-        list_of_graphs = dgl.unbatch(batch)
-        new_batch1 = split_dgl_batch(dgl.batch(list_of_graphs[:split]), max_dgl_edges,
+def split_batch(batch, max_edges, frag_hashes, rev_idx, frag_form_vecs):
+    """Split a PyG Batch if it exceeds max_edges, recursively."""
+    if batch.num_edges > max_edges and batch.num_graphs > 1:
+        split = batch.num_graphs // 2
+        list_of_graphs = batch.to_data_list()
+        new_batch1 = split_batch(Batch.from_data_list(list_of_graphs[:split]), max_edges,
                                      frag_hashes[:split], rev_idx[:split], frag_form_vecs[:split])
-        new_batch2 = split_dgl_batch(dgl.batch(list_of_graphs[split:]), max_dgl_edges,
+        new_batch2 = split_batch(Batch.from_data_list(list_of_graphs[split:]), max_edges,
                                      frag_hashes[split:], rev_idx[split:], frag_form_vecs[split:])
         return new_batch1 + new_batch2
     else:

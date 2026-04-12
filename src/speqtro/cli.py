@@ -591,7 +591,7 @@ def _run_doctor_checks(config=None):
         ("rdkit",      "RDKit",          "cheminformatics",        "pip install rdkit"),
         ("torch",      "PyTorch",        "ML models (SSIN, ChefNMR, ms-pred)", "pip install torch"),
         ("tensorflow", "TensorFlow",     "CASCADE 13C prediction", "pip install tensorflow-cpu"),
-        ("dgl",        "DGL",            "ms-pred graph networks", "pip install dgl"),
+        ("torch_geometric", "PyG (torch-geometric)", "ms-pred graph networks", "pip install torch-geometric"),
         ("lightning",  "Lightning",      "ChefNMR / ms-pred",      "pip install lightning"),
         ("jcamp",      "jcamp",          "IR file parsing",        "pip install jcamp"),
         ("scipy",      "SciPy",          "DP4/DP5 scoring",        "pip install scipy"),
@@ -921,7 +921,7 @@ def pytorch():
 
         # ── Companion libs ────────────────────────────────────────────
         companion_checks = [
-            ("dgl",       "DGL",            "ms-pred graph networks",   "pip install dgl"),
+            ("torch_geometric", "PyG (torch-geometric)", "ms-pred graph networks", "pip install torch-geometric"),
             ("lightning", "Lightning",      "ChefNMR / ms-pred trainer","pip install lightning"),
             ("numpy",     "NumPy",          "tensor interop",           "pip install numpy"),
             ("scipy",     "SciPy",          "DP4/DP5 scoring",          "pip install scipy"),

@@ -1,4 +1,4 @@
-"""joint_model.py -- vendored from ms-pred, imports fixed for speqtro.
+"""joint_model.py -- vendored from ms-pred (PyG version), imports fixed for speqtro.
 
 Joint generation + intensity model (ICEBERG).
 """
@@ -19,13 +19,6 @@ class JointModel(pl.LightningModule):
         gen_model_obj: gen_model.FragGNN,
         inten_model_obj: inten_model.IntenGNN,
     ):
-        """__init__.
-
-        Args:
-            gen_model_obj (gen_model.FragGNN): gen_model_obj
-            inten_model_obj (inten_model.IntenGNN): inten_model_obj
-        """
-
         super().__init__()
         self.gen_model_obj = gen_model_obj
         self.inten_model_obj = inten_model_obj
@@ -52,13 +45,6 @@ class JointModel(pl.LightningModule):
 
     @classmethod
     def from_checkpoints(cls, gen_checkpoint, inten_checkpoint):
-        """from_checkpoints.
-
-        Args:
-            gen_checkpoint
-            inten_checkpoint
-        """
-
         gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint, map_location="cpu")
         inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint, map_location="cpu")
         return cls(gen_model_obj, inten_model_obj)
@@ -78,21 +64,9 @@ class JointModel(pl.LightningModule):
         canonical_root_smi: bool = False,
         name: str = None,
     ) -> dict:
-        """predict_mol.
-
-        Args:
-            smi (str): smi
-            adduct
-            threshold (float): threshold
-            device (str): device
-            max_nodes (int): max_nodes
-            binned_out
-        """
-
         self.eval()
         self.freeze()
 
-        # Run tree gen model
         root_smi = smi
         if type(root_smi) is str:
             batched_input = False
@@ -106,7 +80,6 @@ class JointModel(pl.LightningModule):
             batched_input = True
         batch_size = len(root_smi)
         if not canonical_root_smi:
-            # first remove stereochemistry, then roundtrip
             root_smi = [common.rm_stereo(smi) for smi in root_smi]
             root_smi = [common.smiles_from_inchi(common.inchi_from_smiles(_)) for _ in root_smi]
             valid_mask = [r_smi != None for r_smi in root_smi]
@@ -238,7 +211,6 @@ class JointModel(pl.LightningModule):
                 for id in inten_frag_id:
                     out_frag += [out_tree["frags"][id]["frag"]] * num_shifts
 
-                # merge duplicated mass + frag combinations
                 seen_mass = []
                 seen_frag = []
                 seen_inten = []

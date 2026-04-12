@@ -1,16 +1,14 @@
-"""inten_model.py -- vendored from ms-pred, imports fixed for speqtro.
-
-DAG intensity prediction model (ICEBERG).
-"""
+"""inten_model.py -- vendored from ms-pred (PyG version), imports fixed for speqtro."""
 import numpy as np
 import copy
 import torch
 import pytorch_lightning as pl
 import torch.nn as nn
 import torch_scatter as ts
-import dgl.nn as dgl_nn
+from torch_geometric.nn import global_mean_pool, GlobalAttention
 import pygmtools as pygm
 import functools
+
 
 from . import common
 from . import dag_data
@@ -134,10 +132,19 @@ class IntenGNN(pl.LightningModule):
         if self.embed_collision:
             pe_dim = common.COLLISION_PE_DIM
             pe_scalar = common.COLLISION_PE_SCALAR
-            pe_power = 2 * torch.arange(pe_dim // 2) / pe_dim
+            pe_power =  2 * torch.arange(pe_dim // 2) / pe_dim
             self.collision_embedder_denominators = nn.Parameter(torch.pow(pe_scalar, pe_power))
             self.collision_embedder_denominators.requires_grad = False
             collision_shift = pe_dim
+
+            # Not used: Compute the merged collision embedding as the mean of all energies 0 - 100 eV
+            # collision_eng_steps = torch.arange(0, 100, 0.01)
+            # self.collision_embed_merged = nn.Parameter(torch.cat(
+            #     (torch.sin(collision_eng_steps.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
+            #      torch.cos(collision_eng_steps.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0))),
+            #     dim=1
+            # ).mean(dim=0))
+            # self.collision_embed_merged.requires_grad = False
 
             # All-zero for collision == nan
             self.collision_embed_merged = nn.Parameter(torch.zeros(pe_dim))
@@ -165,6 +172,7 @@ class IntenGNN(pl.LightningModule):
         if self.root_encode == "gnn":
             self.root_module = self.gnn
 
+            # if inject early, need separate root and child GNN's
             if self.inject_early:
                 self.root_module = nn_utils.MoleculeGNN(
                     hidden_size=self.hidden_size,
@@ -187,6 +195,9 @@ class IntenGNN(pl.LightningModule):
         else:
             raise ValueError()
 
+        # MLP layer to take representations from the pooling layer
+        # And predict a single scalar value at each of them
+        # I.e., Go from size B x 2h -> B x 1
         self.intermediate_out = nn_utils.MLPBlocks(
             input_size=self.hidden_size * 3 + self.max_broken + self.formula_in_dim,
             hidden_size=self.hidden_size,
@@ -229,29 +240,37 @@ class IntenGNN(pl.LightningModule):
         if self.include_unshifted_mz:
             self.output_map = nn.Linear(
                 self.hidden_size, self.num_outputs * self.output_size * 2
+                # output_size dim for adduct mass shift & output_size dim for no mass shift
             )
         else:
             self.output_map = nn.Linear(
                 self.hidden_size, self.num_outputs * self.output_size
             )
 
+        # Define map from output layer to attn
         self.isomer_attn_out = copy.deepcopy(self.output_map)
 
+        # Define buckets
         buckets = torch.DoubleTensor(np.linspace(0, 1500, 15000))
         self.inten_buckets = nn.Parameter(buckets)
         self.inten_buckets.requires_grad = False
 
         if self.pool_op == "avg":
-            self.pool = dgl_nn.AvgPooling()
+            self.pool = lambda x, batch: global_mean_pool(x, batch)
         elif self.pool_op == "attn":
-            self.pool = dgl_nn.GlobalAttentionPooling(nn.Linear(hidden_size, 1))
+            self.pool = GlobalAttention(nn.Linear(hidden_size, 1))
         else:
             raise NotImplementedError()
 
         self.sigmoid = nn.Sigmoid()
 
     def cos_loss(self, pred, targ, parent_mass=None, use_hun=False):
-        """cos_loss."""
+        """cos_loss.
+
+        Args:
+            pred:
+            targ:
+        """
         if not self.binned_targs:
             tol = parent_mass * self.mass_tol
             mask = torch.logical_and(
@@ -274,12 +293,17 @@ class IntenGNN(pl.LightningModule):
         return {"loss": loss}
 
     def entropy_loss(self, pred, targ, parent_mass=None, use_hun=False, weighted=False):
-        """entropy_loss."""
+        """entropy_loss.
+
+        Args:
+            pred:
+            targ:
+        """
         def norm_peaks(prob):
             return prob / (prob.sum(dim=-1, keepdim=True) + 1e-22)
         def entropy(prob):
             assert torch.all(torch.abs(prob.sum(dim=-1) - 1) < 1e-3), prob.sum(dim=-1)
-            return -torch.sum(prob * torch.log(prob + 1e-22), dim=-1) / 1.3862943611198906
+            return -torch.sum(prob * torch.log(prob + 1e-22), dim=-1) / 1.3862943611198906 # norm by log(4)
 
         if not self.binned_targs:
             if weighted:
@@ -300,7 +324,7 @@ class IntenGNN(pl.LightningModule):
             pred_norm = norm_peaks(pred[:, :, 1])
             targ_norm = norm_peaks(targ[:, :, 1])
             merged_peaks = torch.cat((
-                torch.bmm(assign, targ_norm.unsqueeze(-1)).squeeze(-1) + pred_norm,
+                torch.bmm(assign, targ_norm.unsueeze(-1)).squeeze(-1) + pred_norm, # usually n_pred > n_targ
                 (1 - assign.sum(dim=1)) * targ_norm,
             ), dim=1)
             entropy_mix = entropy(merged_peaks)
@@ -344,7 +368,32 @@ class IntenGNN(pl.LightningModule):
         frag_forms=None,
         binned_out=False,
     ) -> dict:
-        """predict."""
+        """predict _summary_
+
+        Args:
+            graphs (_type_): _description_
+            root_reprs (_type_): _description_
+            ind_maps (_type_): _description_
+            num_frags (_type_): _description_
+            max_breaks (_type_): _description_
+            adducts (_type_): _description_
+            collision_engs (_type_): _description_
+            instruments (_type_): _description_
+            precursor_mzs (_type_): _description_
+            max_add_hs (_type_, optional): _description_. Defaults to None.
+            max_remove_hs (_type_, optional): _description_. Defaults to None.
+            masses (_type_, optional): _description_. Defaults to None.
+            root_forms (_type_, optional): _description_. Defaults to None.
+            frag_forms (_type_, optional): _description_. Defaults to None.
+            binned_out (bool, optional): _description_. Defaults to False.
+
+        Raises:
+            NotImplementedError: _description_
+
+        Returns:
+            dict: _description_
+        """
+        # B x nodes x num outputs x inten items
         out = self.forward(
             graphs,
             root_reprs,
@@ -404,12 +453,36 @@ class IntenGNN(pl.LightningModule):
         root_forms=None,
         frag_forms=None,
     ):
-        """forward."""
+        """forward _summary_
+
+        Args:
+            graphs (_type_): _description_
+            root_repr (_type_): _description_
+            ind_maps (_type_): _description_
+            num_frags (_type_): _description_
+            broken (_type_): _description_
+            adducts (_type_): _description_
+            collision_engs (_type_): _description_
+            instruments (_type_): _description_
+            precursor_mzs (_type_): _description_
+            max_add_hs (_type_, optional): _description_. Defaults to None.
+            max_remove_hs (_type_, optional): _description_. Defaults to None.
+            masses (_type_, optional): _description_. Defaults to None.
+            root_forms (_type_, optional): _description_. Defaults to None.
+            frag_forms (_type_, optional): _description_. Defaults to None.
+
+        Raises:
+            NotImplementedError: _description_
+
+        Returns:
+            _type_: _description_
+        """
         device = num_frags.device
 
         if not self.include_unshifted_mz:
-            masses = masses[:, :, :1, :].contiguous()
+            masses = masses[:, :, :1, :].contiguous()  # only keep m/z with adduct shift
 
+        # if root fingerprints:
         if self.embed_adduct:
             embed_adducts = self.adduct_embedder[adducts.long()]
         if self.embed_instrument:
@@ -418,49 +491,56 @@ class IntenGNN(pl.LightningModule):
             root_embeddings = self.root_module(root_repr)
             raise NotImplementedError()
         elif self.root_encode == "gnn":
-            with root_repr.local_scope():
-                if self.embed_adduct:
-                    embed_adducts_expand = embed_adducts.repeat_interleave(
-                        root_repr.batch_num_nodes(), 0
-                    )
-                    ndata = root_repr.ndata["h"]
-                    ndata = torch.cat([ndata, embed_adducts_expand], -1)
-                    root_repr.ndata["h"] = ndata
+            orig_root_x = root_repr.x.clone()
+            if self.embed_adduct:
+                embed_adducts_expand = embed_adducts[root_repr.batch]
+                ndata = root_repr.x
+                ndata = torch.cat([ndata, embed_adducts_expand], -1)
+                root_repr.x = ndata
 
-                if self.embed_collision:
-                    embed_collision = torch.cat(
-                        (torch.sin(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
-                         torch.cos(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0))),
-                        dim=1
-                    )
-                    embed_collision = torch.where(
-                        torch.isnan(embed_collision), self.collision_embed_merged.unsqueeze(0), embed_collision
-                    )
-                    embed_collision_expand = embed_collision.repeat_interleave(
-                        root_repr.batch_num_nodes(), 0
-                    )
-                    ndata = root_repr.ndata["h"]
-                    ndata = torch.cat([ndata, embed_collision_expand], -1)
-                    root_repr.ndata["h"] = ndata
+            if self.embed_collision:
+                embed_collision = torch.cat(
+                    (torch.sin(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
+                     torch.cos(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0))),
+                    dim=1
+                )
+                embed_collision = torch.where(  # handle entries without collision energy (== nan)
+                    torch.isnan(embed_collision), self.collision_embed_merged.unsqueeze(0), embed_collision
+                )
+                embed_collision_expand = embed_collision[root_repr.batch]
+                ndata = root_repr.x
+                ndata = torch.cat([ndata, embed_collision_expand], -1)
+                root_repr.x = ndata
 
-                if self.embed_instrument:
-                    embed_instruments_expand = embed_instruments.repeat_interleave(
-                        root_repr.batch_num_nodes(), 0
-                    )
+            if self.embed_instrument:
 
-                    ndata = root_repr.ndata["h"]
-                    ndata = torch.cat([ndata, embed_instruments_expand], -1)
-                    root_repr.ndata["h"] = ndata
-                root_embeddings = self.root_module(root_repr)
-                root_embeddings = self.pool(root_repr, root_embeddings)
+                # TODO: should I account for nan:
+                # self.instrument_nansub = nn.Parameter(torch.zeros(len(set(common.instrument2onehot_pos.values()))))
+                # self.instrument_nansub.requires_grad = False
+
+                # embed_instruments = torch.where(torch.isnan(embed_instruments),
+                #                                 self.instrument_nansub.unsqueeze(0),
+                #                                 embed_instruments
+                # )
+                embed_instruments_expand = embed_instruments[root_repr.batch]
+
+                ndata = root_repr.x
+                ndata = torch.cat([ndata, embed_instruments_expand], -1)
+                root_repr.x = ndata
+            root_embeddings = self.root_module(root_repr)
+            root_embeddings = self.pool(root_embeddings, root_repr.batch)
+            root_repr.x = orig_root_x
         else:
             pass
 
+        # Line up the features to be parallel between fragment avgs and root
+        # graphs
         ext_root = root_embeddings[ind_maps]
+        # Extend the root further to cover each individual atom
         ext_root_atoms = torch.repeat_interleave(
-            ext_root, graphs.batch_num_nodes(), dim=0
+            ext_root, torch.bincount(graphs.batch), dim=0
         )
-        concat_list = [graphs.ndata["h"]]
+        concat_list = [graphs.x]
 
         if self.inject_early:
             concat_list.append(ext_root_atoms)
@@ -468,30 +548,32 @@ class IntenGNN(pl.LightningModule):
         if self.embed_adduct:
             adducts_mapped = embed_adducts[ind_maps]
             adducts_exp = torch.repeat_interleave(
-                adducts_mapped, graphs.batch_num_nodes(), dim=0
+                adducts_mapped, torch.bincount(graphs.batch), dim=0
             )
             concat_list.append(adducts_exp)
 
         if self.embed_collision:
             collision_mapped = embed_collision[ind_maps]
             collision_exp = torch.repeat_interleave(
-                collision_mapped, graphs.batch_num_nodes(), dim=0
+                collision_mapped, torch.bincount(graphs.batch), dim=0
             )
             concat_list.append(collision_exp)
 
         if self.embed_instrument:
             instruments_mapped = embed_instruments[ind_maps]
             instruments_exp = torch.repeat_interleave(
-                instruments_mapped, graphs.batch_num_nodes(), dim=0
+                instruments_mapped, torch.bincount(graphs.batch), dim=0
             )
             concat_list.append(instruments_exp)
 
-        with graphs.local_scope():
-            graphs.ndata["h"] = torch.cat(concat_list, -1).float()
+        original_x = graphs.x
+        graphs.x = torch.cat(concat_list, -1).float()
 
-            frag_embeddings = self.gnn(graphs)
+        frag_embeddings = self.gnn(graphs)
 
-            avg_frags = self.pool(graphs, frag_embeddings)
+        # Average embed the full root molecules and fragments
+        avg_frags = self.pool(frag_embeddings, graphs.batch)
+        graphs.x = original_x
 
         # expand broken and map it to each fragment
         broken_arange = torch.arange(broken.shape[-1]).to(device)
@@ -500,10 +582,12 @@ class IntenGNN(pl.LightningModule):
         broken = torch.clamp(broken[broken_mask], max=self.broken_clamp)
         broken_onehots = self.broken_onehot[broken.long()]
 
+        ### Build hidden with forms
         mlp_cat_list = [ext_root, ext_root - avg_frags, avg_frags, broken_onehots]
 
         hidden = torch.cat(mlp_cat_list, dim=1)
 
+        # Pack so we can use interpeak attn
         padded_hidden = nn_utils.pad_packed_tensor(hidden, num_frags, 0)
 
         if self.encode_forms:
@@ -518,6 +602,7 @@ class IntenGNN(pl.LightningModule):
         padded_hidden = self.intermediate_out(padded_hidden)
         batch_size, max_frags, hidden_dim = padded_hidden.shape
 
+        # Build up a mask
         arange_frags = torch.arange(padded_hidden.shape[1]).to(device)
         attn_mask = ~(arange_frags[None, :] < num_frags[:, None])
 
@@ -525,6 +610,10 @@ class IntenGNN(pl.LightningModule):
         for trans_layer in self.trans_layers:
             hidden, _ = trans_layer(hidden, src_key_padding_mask=attn_mask)
 
+        # hidden: B x L x h
+        # attn_mask: B x L
+
+        # Build mask
         max_inten_shift = (self.output_size - 1) / 2
         max_break_ar = torch.arange(self.output_size, device=device)[None, None, :].to(
             device
@@ -535,6 +624,7 @@ class IntenGNN(pl.LightningModule):
         ub_mask = max_break_ar <= max_breaks_ub[:, :, None]
         lb_mask = max_break_ar >= max_breaks_lb[:, :, None]
 
+        # B x Length x Mass shifts
         valid_pos = torch.logical_and(ub_mask, lb_mask)
         valid_pos = torch.logical_and(valid_pos, ~attn_mask[:, :, None])
 
@@ -543,32 +633,41 @@ class IntenGNN(pl.LightningModule):
         else:
             mz_groups = 1
 
+        # B x Length x outputs x 2 x Mass shift
         valid_pos = valid_pos[:, :, None, None, :].expand(
             batch_size, max_frags, self.num_outputs, mz_groups, self.output_size
         )
+        # B x L x Output
         output = self.output_map(hidden)
         attn_weights = self.isomer_attn_out(hidden)
 
+        # B x L x Out x 2 x Mass shifts
         output = output.reshape(batch_size, max_frags, self.num_outputs, mz_groups, -1)
         attn_weights = attn_weights.reshape(batch_size, max_frags, self.num_outputs, mz_groups, -1)
 
-        attn_weights.masked_fill_(~valid_pos, -99999)
+        # Mask attn weights
+        attn_weights.masked_fill_(~valid_pos, -99999)  # -float("inf"))
 
+        # B x Out x L x 2 x Mass shifts
         output = output.transpose(1, 2)
         attn_weights = attn_weights.transpose(1, 2)
         valid_pos_binned = valid_pos.transpose(1, 2)
 
+        # Calc inverse indices => B x Out x L x 2 x shift
         inverse_indices = torch.clamp(torch.bucketize(masses, self.inten_buckets, right=False), max=len(self.inten_buckets) - 1)
         inverse_indices = inverse_indices[:, None, :, :].expand(attn_weights.shape)
 
+        # B x Out x (L * 2 * Mass shifts)
         attn_weights = attn_weights.reshape(batch_size, self.num_outputs, -1)
         output = output.reshape(batch_size, self.num_outputs, -1)
         inverse_indices = inverse_indices.reshape(batch_size, self.num_outputs, -1)
         valid_pos_binned = valid_pos.reshape(batch_size, self.num_outputs, -1)
 
+        # B x Outs x ( L * 2 * mass shifts )
         pool_weights = ts.scatter_softmax(attn_weights, index=inverse_indices, dim=-1)
         weighted_out = pool_weights * output
 
+        # B x Outs x (UNIQUE(L * 2 * mass shifts))
         output_binned = ts.scatter_add(
             weighted_out,
             index=inverse_indices,
@@ -576,6 +675,7 @@ class IntenGNN(pl.LightningModule):
             dim_size=self.inten_buckets.shape[-1],
         )
 
+        # B x L x Outs x (2 * mass shifts)
         pool_weights_reshaped = pool_weights.reshape(
             batch_size, self.num_outputs, max_frags, -1
         ).transpose(1, 2)
@@ -583,6 +683,7 @@ class IntenGNN(pl.LightningModule):
             batch_size, self.num_outputs, max_frags, -1
         ).transpose(1, 2)
 
+        # B x Outs x binned
         valid_pos_binned = ts.scatter_max(
             (valid_pos_binned).long(),
             index=inverse_indices,
@@ -590,6 +691,8 @@ class IntenGNN(pl.LightningModule):
             dim=-1,
         )[0].bool()
 
+        # Activate each dim with its respective output activation
+        # Helpful for hurdle or probabilistic models
         new_outputs_binned = []
         for output_ind, act in enumerate(self.output_activations):
             new_outputs_binned.append(
@@ -598,6 +701,9 @@ class IntenGNN(pl.LightningModule):
         output_binned = torch.cat(new_outputs_binned, -2)
         output_binned.masked_fill_(~valid_pos_binned, 0)
 
+        # Index into output binned using inverse_indices_reshaped
+        # Revert the binned output back to frags for attribution
+        # B x Out x (L * 2 * Mass shifts)
         inverse_indices_reshaped_temp = inverse_indices_reshaped.transpose(
             1, 2
         ).reshape(batch_size, self.num_outputs, -1)
@@ -635,7 +741,7 @@ class IntenGNN(pl.LightningModule):
             pred_inten = pred_obj["output"]
             pred_inten = pred_inten[:, :, 0, :]
             pred_inten = torch.stack((batch["masses"], pred_inten), dim=-1)
-            pred_inten = pred_inten.reshape(pred_inten.shape[0], -1, 2)
+            pred_inten = pred_inten.reshape(pred_inten.shape[0], -1, 2)  # B x (Out * Mass shifts) x 2
         batch_size = len(batch["names"])
 
         if name == 'train':
@@ -644,19 +750,21 @@ class IntenGNN(pl.LightningModule):
             if self.track_cosine:
                 cosine_fn = self._cosine_fn
         else:
-            loss_fn = functools.partial(self.loss_fn, use_hun=True)
+            loss_fn = functools.partial(self.loss_fn, use_hun=True)  # use hungarian in val and test
             decoy_loss_fn = functools.partial(self.entropy_loss, use_hun=True)
             if self.track_cosine:
-                cosine_fn = functools.partial(self._cosine_fn, use_hun=True)
+                cosine_fn = functools.partial(self._cosine_fn, use_hun=True) # use hungarian in val and test
 
-        if 'is_decoy' in batch and 'mol_num' in batch:
+        if 'is_decoy' in batch and 'mol_num' in batch:  # data with decoys
             true_data_inds = batch["is_decoy"] == 0
             num_true_data = torch.sum(true_data_inds)
 
+            # the real spectrum loss (cosine or entropy)
             spec_loss = loss_fn(pred_inten[true_data_inds], batch["inten_targs"][true_data_inds],
                                parent_mass=batch["precursor_mzs"][true_data_inds]
             )['loss']
 
+            # contrastive ranking loss cosine loss to decoys
             decoy_spec_loss = decoy_loss_fn(pred_inten,
                                             batch["inten_targs"][true_data_inds].repeat_interleave(batch['mol_num'], dim=0),
                                             parent_mass=batch["precursor_mzs"]
@@ -664,11 +772,11 @@ class IntenGNN(pl.LightningModule):
             split_end = torch.cumsum(batch['mol_num'], dim=0)
             split_start = split_end - batch['mol_num']
             decoy_spec_loss = [decoy_spec_loss[s:e] for s, e in zip(split_start, split_end)]
-            decoy_spec_loss = torch.nn.utils.rnn.pad_sequence(decoy_spec_loss, batch_first=True, padding_value=1)
+            decoy_spec_loss = torch.nn.utils.rnn.pad_sequence(decoy_spec_loss, batch_first=True, padding_value=1) # cos_loss <=1 by definition
             decoy_spec_loss_sorted = torch.sort(decoy_spec_loss, dim=-1).values.detach()
             ranking_dist = torch.abs(decoy_spec_loss[:, :, None] - decoy_spec_loss_sorted[:, None, :])
             top1_prob = pygm.sinkhorn(-ranking_dist, n1=batch["mol_num"], n2=batch["mol_num"], tau=self.sk_tau, backend='pytorch')[:, 0, 0]
-            contr_loss = torch.relu(-torch.log(top1_prob + 0.5))
+            contr_loss = torch.relu(-torch.log(top1_prob + 0.5))  # shift & cut ce loss for probs > 0.5
 
             loss = {
                 "spec_loss": spec_loss,

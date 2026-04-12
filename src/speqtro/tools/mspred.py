@@ -7,7 +7,7 @@ from molecular structures. It learns a fragmentation DAG then scores fragment
 intensities with a contrastive-trained GNN.
 
 Architecture: Two-stage — (1) DAG fragment generator (GNN), (2) Intensity predictor
-Framework: PyTorch Lightning + DGL
+Framework: PyTorch Lightning + PyG (PyTorch Geometric)
 Input: SMILES + collision energy (eV) + precursor m/z + adduct type
 Output: Predicted MS/MS spectrum (m/z vs. normalized intensity)
 

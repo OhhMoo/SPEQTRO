@@ -1,12 +1,12 @@
-"""mol_graph.py -- vendored from ms-pred, imports fixed for speqtro.
+"""mol_graph.py -- vendored from ms-pred (PyG version), imports fixed for speqtro.
 
 Classes to featurize molecules into a graph with onehot concat feats on atoms
-and bonds. Inspired by the dgllife library.
+and bonds.
 """
 from rdkit import Chem
 import numpy as np
 import torch
-import dgl
+from torch_geometric.data import Data
 from . import nn_utils
 
 atom_feat_registry = {}
@@ -25,7 +25,7 @@ def register_atom_feat(cls):
     return cls
 
 
-class MolDGLGraph:
+class MolGraph:
     def __init__(
         self,
         atom_feats: list = [
@@ -66,7 +66,11 @@ class MolDGLGraph:
 
         self.num_atom_feats += self.pe_embed_k
 
-    def get_mol_graph(self, mol: Chem.Mol, bigraph: str = True) -> dict:
+    def get_mol_graph(
+        self,
+        mol: Chem.Mol,
+        bigraph: str = True,
+    ) -> dict:
         all_atoms = mol.GetAtoms()
         all_bonds = mol.GetBonds()
         bond_feats = []
@@ -102,26 +106,33 @@ class MolDGLGraph:
         }
 
     def get_dgl_graph(self, mol: Chem.Mol, bigraph: str = True):
+        """Returns a torch_geometric.data.Data object."""
         mol_graph = self.get_mol_graph(mol, bigraph=bigraph)
 
         bond_inds = torch.from_numpy(mol_graph["bond_tuples"]).long()
         bond_feats = torch.from_numpy(mol_graph["bond_feats"]).float()
         atom_feats = torch.from_numpy(mol_graph["atom_feats"]).float()
 
-        g = dgl.graph(
-            data=(bond_inds[:, 0], bond_inds[:, 1]), num_nodes=atom_feats.shape[0]
-        )
-        g.ndata["h"] = atom_feats
-        g.edata["e"] = bond_feats
+        edge_index = bond_inds.t().contiguous()  # (2, E)
 
         if self.pe_embed_k > 0:
             pe_embeds = nn_utils.random_walk_pe(
-                g,
+                edge_index,
+                num_nodes=atom_feats.shape[0],
                 k=self.pe_embed_k,
             )
-            g.ndata["h"] = torch.cat((g.ndata["h"], pe_embeds), -1)
+            atom_feats = torch.cat((atom_feats, pe_embeds), -1)
 
-        return g
+        data = Data(
+            x=atom_feats,
+            edge_index=edge_index,
+            edge_attr=bond_feats,
+        )
+        return data
+
+
+# Backward compatibility alias
+MolDGLGraph = MolGraph
 
 
 class FeatBase:
@@ -177,8 +188,7 @@ class AtomHybrid(FeatBase):
 
     @classmethod
     def featurize(cls, x) -> int:
-        onehot = one_hot_encoding(x.GetHybridization(), cls.allowable_set, True)
-        return onehot
+        return one_hot_encoding(x.GetHybridization(), cls.allowable_set, True)
 
 
 @register_atom_feat
@@ -189,8 +199,7 @@ class AtomFormal(FeatBase):
 
     @classmethod
     def featurize(cls, x) -> int:
-        onehot = one_hot_encoding(x.GetFormalCharge(), cls.allowable_set, True)
-        return onehot
+        return one_hot_encoding(x.GetFormalCharge(), cls.allowable_set, True)
 
 
 @register_atom_feat
@@ -201,8 +210,7 @@ class AtomRadical(FeatBase):
 
     @classmethod
     def featurize(cls, x) -> int:
-        onehot = one_hot_encoding(x.GetNumRadicalElectrons(), cls.allowable_set, True)
-        return onehot
+        return one_hot_encoding(x.GetNumRadicalElectrons(), cls.allowable_set, True)
 
 
 @register_atom_feat
@@ -231,8 +239,7 @@ class AtomChiral(FeatBase):
 
     @classmethod
     def featurize(cls, x) -> int:
-        chiral_onehot = one_hot_encoding(x.GetChiralTag(), cls.allowable_set, True)
-        return chiral_onehot
+        return one_hot_encoding(x.GetChiralTag(), cls.allowable_set, True)
 
 
 @register_atom_feat
@@ -301,7 +308,6 @@ class BondConj(FeatBase):
 
 
 def one_hot_encoding(x, allowable_set, encode_unknown=False) -> list:
-    """One_hot encoding."""
     if encode_unknown and (allowable_set[-1] is not None):
         allowable_set.append(None)
 
