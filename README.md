@@ -23,7 +23,7 @@
 ## Requirements
 
 - Python 3.10 – 3.13
-- An [Anthropic API key](https://console.anthropic.com/) for the Claude-powered agent
+- An Anthropic API
 
 ## Installation
 
